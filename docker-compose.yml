@@ -9,6 +9,9 @@
 services:
   api:
     build: ./api
+    environment:
+      # Senha com caractere especial (@, :, /) precisa ser URL-encoded no .env.
+      DATABASE_URL: mysql://${MYSQL_USER:?defina no .env}:${MYSQL_PASSWORD:?defina no .env}@mysql:3306/${MYSQL_DATABASE:?defina no .env}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
@@ -28,6 +31,8 @@ services:
           target: /app/test
         - action: rebuild
           path: ./api/package.json
+        - action: rebuild
+          path: ./api/prisma
 
   worker:
     build: ./worker
