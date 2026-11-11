@@ -43,10 +43,33 @@ curl -s -H 'Content-Type: application/json' \
   http://localhost:3000/auth/login
 ```
 
+### Corridas
+
+Todas as rotas exigem `Authorization: Bearer <token>`. Passageiro cria e lê só as próprias corridas; motorista lê as abertas e as que aceitou, e só ele altera status (um motorista tem no máximo uma corrida em aberto).
+
+| Rota                          | O que faz                                                                                       |
+| ----------------------------- | ----------------------------------------------------------------------------------------------- |
+| `POST /corridas`              | passageiro, `{ origem, destino }` + cabeçalho `Idempotency-Key` obrigatório; reenvio com a mesma chave devolve a mesma corrida, chave reaproveitada com outro corpo → 422 |
+| `GET /corridas`               | as 50 mais recentes visíveis para o perfil (rota extra, para a tela de listagem)               |
+| `GET /corridas/:id`           | lê do cache Redis (gravado pelo worker) e, no miss, do MySQL                                    |
+| `PATCH /corridas/:id/status`  | motorista, `{ status }`: `aceita` → `em_andamento` → `finalizada`; fora de ordem → 409          |
+
+Cada escrita grava o evento (`corrida.criada`, `corrida.status_alterado`) no outbox do MySQL na mesma transação, e a api publica no RabbitMQ em até ~1s. A topologia (exchange `corridas`, fila `worker.corridas`, DLQ) está em `rabbitmq/definitions.json` e é aplicada pelo serviço `rabbitmq-init` antes de api e worker subirem.
+
+```bash
+TOKEN=$(curl -s -H 'Content-Type: application/json' \
+  -d '{"email":"passageiro@teste.local","password":"senha-de-teste"}' \
+  http://localhost:3000/auth/login | sed 's/.*"accessToken":"\([^"]*\)".*/\1/')
+curl -s -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: $(uuidgen)" -d '{"origem":"Centro","destino":"Barra"}' \
+  http://localhost:3000/corridas
+```
+
 Testes, lint e typecheck rodam dentro dos containers:
 
 ```bash
-docker compose exec api npm test
+docker compose exec api npm test                  # unitários, sem banco
+docker compose exec api npm run test:integration  # contra o MySQL, no banco separado corridas_test
 docker compose exec api npm run lint
 docker compose exec worker sh -c 'npm run typecheck && npm run lint'
 docker compose exec ui npm run lint
