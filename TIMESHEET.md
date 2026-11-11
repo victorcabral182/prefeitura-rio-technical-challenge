@@ -13,8 +13,9 @@ Registro cronológico das horas dedicadas ao desenvolvimento do desafio técnico
 | 12:24  | 12:30   | 6min    | Diagramação das telas de login (e-mail e senha), listagem e criação de corridas, sem integração com a API.                                                                       |
 | 12:30  | 13:01   | 31min   | Banco da API: escolha do Prisma e do modelo (usuários com tipo, corridas, UUID), migration inicial aplicada no start da api, permissão de shadow database e fluxo de migrations. |
 | 13:01  | 13:43   | 42min   | Arquitetura DDD da API e autenticação: login com JWT RS256, refresh token com rotação e detecção de reuso, scrypt, seed de usuários de teste, chaves via compose secrets e testes. |
+| 14:41  | 15:27   | 46min   | API de corridas: perfis e 403, POST idempotente, PATCH de status com lock do motorista, GET com cache Redis, listagem, outbox + topologia do RabbitMQ (rabbitmq-init), testes unitários e de integração no MySQL, DECISIONS 4–7. |
 
-**Total do dia:** 2h56min
+**Total do dia:** 3h42min
 
 ---
 
@@ -23,5 +24,5 @@ Registro cronológico das horas dedicadas ao desenvolvimento do desafio técnico
 | Indicador                   | Valor     |
 | --------------------------- | --------- |
 | Tempo sugerido pelo desafio | 6–8 horas |
-| Tempo total registrado      | 2h56min   |
-| Tempo restante até 8h       | 5h04min   |
+| Tempo total registrado      | 3h42min   |
+| Tempo restante até 8h       | 4h18min   |
