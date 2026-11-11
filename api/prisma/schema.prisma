@@ -47,13 +47,38 @@ model Corrida {
   passageiroId String        @map("passageiro_id") @db.Char(36)
   // Preenchido quando um motorista aceita a corrida.
   motoristaId  String?       @map("motorista_id") @db.Char(36)
+  // Incrementa a cada mudança: vai nos eventos para o worker descartar evento
+  // velho, e o UPDATE condicional nela impede duas mudanças simultâneas.
+  versao       Int           @default(1)
+  // Idempotency-Key do POST e SHA-256 do corpo: reenvio com a mesma chave
+  // devolve a mesma corrida; mesma chave com outro corpo é recusada.
+  chaveIdempotencia String   @map("chave_idempotencia") @db.VarChar(255)
+  hashIdempotencia  String   @map("hash_idempotencia") @db.Char(64)
   criadaEm     DateTime      @default(now()) @map("criada_em")
   atualizadaEm DateTime      @updatedAt @map("atualizada_em")
 
   passageiro Usuario  @relation("passageiro", fields: [passageiroId], references: [id])
   motorista  Usuario? @relation("motorista", fields: [motoristaId], references: [id])
 
+  // A chave é única por passageiro: dois POSTs simultâneos com a mesma chave
+  // esbarram aqui mesmo que os dois passem pela checagem da aplicação.
+  @@unique([passageiroId, chaveIdempotencia])
   @@map("corridas")
+}
+
+// Outbox transacional: o evento é gravado na mesma transação da corrida e um
+// relay publica no RabbitMQ depois. Sem isso, a API poderia gravar a corrida e
+// cair antes de publicar (evento perdido), ou publicar e falhar no commit.
+model OutboxEvento {
+  // Vira o eventId da mensagem: o worker deduplica por ele.
+  id          String    @id @default(uuid(7)) @db.Char(36)
+  tipo        String    @db.VarChar(64)
+  payload     Json
+  criadoEm    DateTime  @default(now()) @map("criado_em")
+  publicadoEm DateTime? @map("publicado_em")
+
+  @@index([publicadoEm])
+  @@map("outbox_eventos")
 }
 
 // Refresh token opaco: o cliente recebe o valor aleatório, o banco guarda só o

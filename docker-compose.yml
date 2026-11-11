@@ -14,6 +14,8 @@ services:
       DATABASE_URL: mysql://${MYSQL_USER:?defina no .env}:${MYSQL_PASSWORD:?defina no .env}@mysql:3306/${MYSQL_DATABASE:?defina no .env}
       JWT_PRIVATE_KEY_FILE: /run/secrets/jwt_private_key
       JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:?defina no .env}:${RABBITMQ_DEFAULT_PASS:?defina no .env}@rabbitmq:5672
+      REDIS_URL: redis://redis:6379
     # Chaves do JWT montadas como arquivo, não como variável: não aparecem no
     # `docker inspect` nem no ambiente do processo. Gere com scripts/gerar-chaves-jwt.sh.
     secrets:
@@ -26,8 +28,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+      rabbitmq-init:
+        condition: service_completed_successfully
     develop:
       watch:
         - action: sync
@@ -44,8 +46,8 @@ services:
   worker:
     build: ./worker
     depends_on:
-      rabbitmq:
-        condition: service_healthy
+      rabbitmq-init:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       mongo:
@@ -127,6 +129,30 @@ services:
       timeout: 10s
       start_period: 60s
       start_interval: 2s
+
+  # Cria a topologia (exchange, filas e DLQ) de rabbitmq/definitions.json depois
+  # que o broker sobe, e termina. Não usa o import no boot do RabbitMQ porque,
+  # com ele, o broker deixa de criar o usuário do .env. api e worker só sobem
+  # depois deste serviço: ninguém publica antes de a fila existir (mensagem para
+  # exchange sem fila ligada é descartada em silêncio). O import é idempotente.
+  rabbitmq-init:
+    image: curlimages/curl:8.17.0
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_USER: ${RABBITMQ_DEFAULT_USER:?defina no .env}
+      RABBITMQ_PASS: ${RABBITMQ_DEFAULT_PASS:?defina no .env}
+    volumes:
+      - ./rabbitmq/definitions.json:/definitions.json:ro
+    # A API de gerenciamento sobe alguns segundos depois da porta AMQP do healthcheck.
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        curl --fail-with-body -sS --retry 30 --retry-all-errors --retry-delay 1
+        -u "$$RABBITMQ_USER:$$RABBITMQ_PASS" -H "Content-Type: application/json"
+        --data-binary @/definitions.json http://rabbitmq:15672/api/definitions
+        && echo "topologia do RabbitMQ aplicada"
 
 secrets:
   jwt_private_key:

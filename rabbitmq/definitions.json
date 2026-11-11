@@ -1,0 +1,43 @@
+{
+  "exchanges": [
+    {
+      "name": "corridas",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "worker.corridas",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "worker.corridas.dlq"
+      }
+    },
+    {
+      "name": "worker.corridas.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": { "x-queue-type": "quorum" }
+    }
+  ],
+  "bindings": [
+    {
+      "source": "corridas",
+      "vhost": "/",
+      "destination": "worker.corridas",
+      "destination_type": "queue",
+      "routing_key": "corrida.*",
+      "arguments": {}
+    }
+  ]
+}
