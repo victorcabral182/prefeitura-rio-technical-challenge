@@ -72,6 +72,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?defina no .env}
     volumes:
       - mysql-data:/var/lib/mysql
+      - ./mysql/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       # TCP de propósito: no primeiro boot o entrypoint sobe um MySQL temporário com
       # --skip-networking; um ping via socket marcaria healthy antes do servidor real subir.
