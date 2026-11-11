@@ -1,0 +1,56 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum TipoUsuario {
+  passageiro
+  motorista
+}
+
+enum StatusCorrida {
+  solicitada
+  aceita
+  em_andamento
+  finalizada
+}
+
+// IDs em UUID v7: ordenado pelo tempo, então os inserts entram no fim do índice
+// clusterizado do InnoDB em vez de espalhar páginas como o v4.
+model Usuario {
+  id           String      @id @default(uuid(7)) @db.Char(36)
+  nome         String      @db.VarChar(100)
+  email        String      @unique @db.VarChar(255)
+  senhaHash    String      @map("senha_hash") @db.VarChar(255)
+  tipo         TipoUsuario
+  criadoEm     DateTime    @default(now()) @map("criado_em")
+  atualizadoEm DateTime    @updatedAt @map("atualizado_em")
+
+  corridasComoPassageiro Corrida[] @relation("passageiro")
+  corridasComoMotorista  Corrida[] @relation("motorista")
+
+  @@map("usuarios")
+}
+
+model Corrida {
+  id           String        @id @default(uuid(7)) @db.Char(36)
+  origem       String        @db.VarChar(255)
+  destino      String        @db.VarChar(255)
+  status       StatusCorrida @default(solicitada)
+  passageiroId String        @map("passageiro_id") @db.Char(36)
+  // Preenchido quando um motorista aceita a corrida.
+  motoristaId  String?       @map("motorista_id") @db.Char(36)
+  criadaEm     DateTime      @default(now()) @map("criada_em")
+  atualizadaEm DateTime      @updatedAt @map("atualizada_em")
+
+  passageiro Usuario  @relation("passageiro", fields: [passageiroId], references: [id])
+  motorista  Usuario? @relation("motorista", fields: [motoristaId], references: [id])
+
+  @@map("corridas")
+}

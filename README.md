@@ -30,6 +30,17 @@ docker compose exec ui npm run lint
 
 Apagar os dados (MySQL/Mongo) e recomeçar: `docker compose down -v`.
 
+### Migrations (Prisma)
+
+As migrations pendentes são aplicadas automaticamente quando o container da api sobe (`prisma migrate deploy`). Para criar uma nova depois de alterar `api/prisma/schema.prisma`:
+
+```bash
+docker compose run --rm --user "$(id -u):$(id -g)" -v ./api/prisma:/app/prisma api \
+  npx prisma migrate dev --create-only --name <nome>
+```
+
+O volume grava a migration em `api/prisma/migrations` no host, e o `--watch` rebuilda a api e aplica a migration no próximo start. O `migrate dev` usa um banco temporário (shadow database); a permissão para isso é concedida ao usuário da aplicação por `mysql/initdb/`, só no ambiente de dev.
+
 ## Estrutura
 
 | Pasta     | Stack                                                       |

@@ -3,3 +3,4 @@ dist/
 coverage/
 .env
 todo.md
+api/src/generated/
