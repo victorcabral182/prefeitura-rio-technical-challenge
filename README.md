@@ -8,6 +8,7 @@ Pré-requisito: Docker (testado com Engine 29 / Compose 5.4).
 
 ```bash
 cp .env.example .env                # credenciais locais; o .env não é versionado
+./scripts/gerar-chaves-jwt.sh       # par RSA do JWT em secrets/ (também fora do git)
 docker compose up --build --watch   # sobe tudo com hot reload
 ```
 
@@ -18,6 +19,29 @@ Sem `--watch` o ambiente sobe igual, só não sincroniza as alterações de cód
 | UI                | http://localhost:5173                                                   |
 | API               | http://localhost:3000                                                   |
 | RabbitMQ (painel) | http://localhost:15672 (`RABBITMQ_DEFAULT_USER` / `RABBITMQ_DEFAULT_PASS` do `.env`) |
+
+### Autenticação
+
+Usuários de teste criados automaticamente no start da api (senha de teste, só para avaliação local):
+
+| E-mail                    | Tipo       | Senha            |
+| ------------------------- | ---------- | ---------------- |
+| `passageiro@teste.local`  | passageiro | `senha-de-teste` |
+| `passageiro2@teste.local` | passageiro | `senha-de-teste` |
+| `motorista@teste.local`   | motorista  | `senha-de-teste` |
+
+| Rota                 | O que faz                                                                                     |
+| -------------------- | --------------------------------------------------------------------------------------------- |
+| `POST /auth/login`   | `{ email, password }` → access token JWT (RS256, 15 min) no corpo + refresh token em cookie httpOnly (1 dia) |
+| `POST /auth/refresh` | troca o refresh token do cookie por um par novo; reusar um token já trocado derruba todas as sessões do usuário |
+| `POST /auth/logout`  | revoga o refresh token e apaga o cookie                                                       |
+| `GET /auth/me`       | `Authorization: Bearer <token>` → usuário autenticado                                         |
+
+```bash
+curl -s -H 'Content-Type: application/json' \
+  -d '{"email":"passageiro@teste.local","password":"senha-de-teste"}' \
+  http://localhost:3000/auth/login
+```
 
 Testes, lint e typecheck rodam dentro dos containers:
 

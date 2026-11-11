@@ -5,6 +5,7 @@ COPY package*.json ./
 RUN npm ci
 COPY . .
 RUN npx prisma generate
-# Aplica só as migrations pendentes (idempotente) antes de subir o Nest.
+# Aplica só as migrations pendentes e cria os usuários de teste que faltam (ambos
+# idempotentes) antes de subir o Nest.
 # `exec` deixa o npm como processo principal, para o SIGTERM do `docker stop` chegar nele.
-CMD ["sh", "-c", "npx prisma migrate deploy && exec npm run start:dev"]
+CMD ["sh", "-c", "npx prisma migrate deploy && npm run db:seed && exec npm run start:dev"]

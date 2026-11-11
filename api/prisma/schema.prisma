@@ -34,6 +34,7 @@ model Usuario {
 
   corridasComoPassageiro Corrida[] @relation("passageiro")
   corridasComoMotorista  Corrida[] @relation("motorista")
+  refreshTokens          RefreshToken[]
 
   @@map("usuarios")
 }
@@ -53,4 +54,21 @@ model Corrida {
   motorista  Usuario? @relation("motorista", fields: [motoristaId], references: [id])
 
   @@map("corridas")
+}
+
+// Refresh token opaco: o cliente recebe o valor aleatório, o banco guarda só o
+// SHA-256. Cada uso marca usado_em e gera outro (rotação); um token já usado que
+// reaparece indica roubo e revoga todos os tokens do usuário.
+model RefreshToken {
+  id         String    @id @default(uuid(7)) @db.Char(36)
+  usuarioId  String    @map("usuario_id") @db.Char(36)
+  tokenHash  String    @unique @map("token_hash") @db.Char(64)
+  expiraEm   DateTime  @map("expira_em")
+  usadoEm    DateTime? @map("usado_em")
+  revogadoEm DateTime? @map("revogado_em")
+  criadoEm   DateTime  @default(now()) @map("criado_em")
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
 }
