@@ -12,8 +12,9 @@ Registro cronológico das horas dedicadas ao desenvolvimento do desafio técnico
 | 12:00  | 12:24   | 24min   | Credenciais do compose para .env (histórico da branch reescrito), revisão das decisões da etapa 1, DECISIONS.md e merge do PR #1 em develop.                                     |
 | 12:24  | 12:30   | 6min    | Diagramação das telas de login (e-mail e senha), listagem e criação de corridas, sem integração com a API.                                                                       |
 | 12:30  | 13:01   | 31min   | Banco da API: escolha do Prisma e do modelo (usuários com tipo, corridas, UUID), migration inicial aplicada no start da api, permissão de shadow database e fluxo de migrations. |
+| 13:01  | 13:43   | 42min   | Arquitetura DDD da API e autenticação: login com JWT RS256, refresh token com rotação e detecção de reuso, scrypt, seed de usuários de teste, chaves via compose secrets e testes. |
 
-**Total do dia:** 2h14min
+**Total do dia:** 2h56min
 
 ---
 
@@ -22,5 +23,5 @@ Registro cronológico das horas dedicadas ao desenvolvimento do desafio técnico
 | Indicador                   | Valor     |
 | --------------------------- | --------- |
 | Tempo sugerido pelo desafio | 6–8 horas |
-| Tempo total registrado      | 2h14min   |
-| Tempo restante até 8h       | 5h46min   |
+| Tempo total registrado      | 2h56min   |
+| Tempo restante até 8h       | 5h04min   |
