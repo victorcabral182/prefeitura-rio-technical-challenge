@@ -1,0 +1,16 @@
+{
+  "name": "worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/main.ts",
+    "start": "node src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint src/"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "oxlint": "^1.93.0",
+    "typescript": "^7.0.2"
+  }
+}

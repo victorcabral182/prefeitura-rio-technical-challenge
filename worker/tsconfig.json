@@ -1,0 +1,17 @@
+{
+  // Só typecheck: o Node 24 executa o .ts direto (type stripping), sem etapa de build.
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "nodenext",
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    // Exigidos pelo type stripping do Node: imports com extensão .ts,
+    // `import type` explícito e nada de enum/namespace/parameter properties.
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true
+  },
+  "include": ["src"]
+}
