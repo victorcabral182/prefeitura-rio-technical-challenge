@@ -4,3 +4,4 @@ coverage/
 .env
 todo.md
 api/src/generated/
+secrets/
