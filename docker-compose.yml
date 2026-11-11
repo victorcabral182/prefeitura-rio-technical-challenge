@@ -1,0 +1,120 @@
+# Ambiente local de desenvolvimento.
+#   docker compose up --build --watch   sobe tudo com hot reload (sync de src/ para os containers)
+#   docker compose down -v              derruba e apaga os dados do MySQL e do Mongo
+# Credenciais vêm do .env (cp .env.example .env), que não é versionado.
+# Healthchecks: a cada 2s durante o boot (libera o depends_on rápido) e a cada 30s depois;
+# as CLIs do RabbitMQ/Mongo custam ~1s de CPU por execução.
+# Portas publicadas só em 127.0.0.1: o Docker ignora o firewall do host e exporia os serviços na rede.
+
+services:
+  api:
+    build: ./api
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: sync
+          path: ./api/src
+          target: /app/src
+        - action: sync
+          path: ./api/test
+          target: /app/test
+        - action: rebuild
+          path: ./api/package.json
+
+  worker:
+    build: ./worker
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: sync
+          path: ./worker/src
+          target: /app/src
+        - action: rebuild
+          path: ./worker/package.json
+
+  ui:
+    build: ./ui
+    ports:
+      - "127.0.0.1:5173:5173"
+    develop:
+      watch:
+        - action: sync
+          path: ./ui/src
+          target: /app/src
+        - action: rebuild
+          path: ./ui/package.json
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?defina no .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?defina no .env}
+      MYSQL_USER: ${MYSQL_USER:?defina no .env}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?defina no .env}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      # TCP de propósito: no primeiro boot o entrypoint sobe um MySQL temporário com
+      # --skip-networking; um ping via socket marcaria healthy antes do servidor real subir.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      start_interval: 2s
+
+  redis:
+    image: redis:8-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      start_interval: 2s
+
+  mongo:
+    # 8.x recusa subir em kernel >= 6.19 (TCMalloc viola a ABI do rseq, SERVER-121912); 9.0 sobe.
+    image: mongo:9
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      start_interval: 2s
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    # O RabbitMQ guarda os dados por nome do nó (rabbit@<hostname>); hostname fixo evita
+    # perder filas duráveis quando o container é recriado.
+    hostname: rabbitmq
+    environment:
+      # O usuário padrão guest/guest só aceita conexões de localhost, não dos outros containers.
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:?defina no .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?defina no .env}
+    ports:
+      - "127.0.0.1:15672:15672" # painel de gerenciamento
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      start_interval: 2s
+
+volumes:
+  mysql-data:
+  mongo-data:
