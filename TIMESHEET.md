@@ -22,8 +22,9 @@ Registro cronológico das horas dedicadas ao desenvolvimento do desafio técnico
 | Início | Término | Duração | Atividades realizadas                                                                                                                                                            |
 | ------ | ------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 17:45  | 17:57   | 12min   | CLAUDE.md, CI no GitHub Actions (PRs para develop/main, comandos do README dentro do compose), simulação em ambiente limpo e correção da autenticação do driver mariadb no MySQL. |
+| 17:59  | 18:16   | 17min   | Worker: correlation_id pelo outbox até os headers AMQP, consumo idempotente (Mongo `_id = eventId`, Lua compare-and-set por versão), DLQ/retry/restart, testes node:test e cenários de falha; DECISIONS 5 estendida. |
 
-**Total do dia:** 12min
+**Total do dia:** 29min
 
 ---
 
@@ -32,5 +33,5 @@ Registro cronológico das horas dedicadas ao desenvolvimento do desafio técnico
 | Indicador                   | Valor     |
 | --------------------------- | --------- |
 | Tempo sugerido pelo desafio | 6–8 horas |
-| Tempo total registrado      | 3h54min   |
-| Tempo restante até 8h       | 4h06min   |
+| Tempo total registrado      | 4h11min   |
+| Tempo restante até 8h       | 3h49min   |

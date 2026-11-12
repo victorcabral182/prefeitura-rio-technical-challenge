@@ -6,6 +6,8 @@ import { requiredEnv } from '../env.js';
 const EXCHANGE = 'corridas';
 
 export type EventEnvelope = { eventId: string; type: string; occurredAt: string; data: unknown };
+// `headers` vai nos headers AMQP, fora do corpo (correlation_id, traceparent).
+export type OutboundEvent = EventEnvelope & { headers?: Record<string, string> };
 
 // Conexão preguiçosa: abre no primeiro publish e, se cair, é descartada e
 // reaberta no próximo. O relay tenta de novo a cada ciclo, então isso basta
@@ -18,15 +20,16 @@ export class RabbitMqPublisher {
 
   // Publisher confirms: só retorna depois que o broker confirmou o recebimento
   // de todas as mensagens. Até lá o outbox continua marcando os eventos como pendentes.
-  async publish(events: EventEnvelope[]): Promise<void> {
+  async publish(events: OutboundEvent[]): Promise<void> {
     const channel = await this.getChannel();
     try {
-      for (const event of events) {
-        channel.publish(EXCHANGE, event.type, Buffer.from(JSON.stringify(event)), {
+      for (const { headers, ...envelope } of events) {
+        channel.publish(EXCHANGE, envelope.type, Buffer.from(JSON.stringify(envelope)), {
           persistent: true,
           contentType: 'application/json',
-          messageId: event.eventId,
-          type: event.type,
+          messageId: envelope.eventId,
+          type: envelope.type,
+          headers,
         });
       }
       await channel.waitForConfirms();

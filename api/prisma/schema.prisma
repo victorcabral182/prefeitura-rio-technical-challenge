@@ -74,6 +74,9 @@ model OutboxEvento {
   id          String    @id @default(uuid(7)) @db.Char(36)
   tipo        String    @db.VarChar(64)
   payload     Json
+  // Contexto da requisição de origem (correlation_id, depois traceparent), que o
+  // relay repassa como headers AMQP: ele publica fora da requisição.
+  headers     Json?
   criadoEm    DateTime  @default(now()) @map("criado_em")
   publicadoEm DateTime? @map("publicado_em")
 

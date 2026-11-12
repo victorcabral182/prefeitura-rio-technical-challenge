@@ -3,8 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/main.ts",
     "start": "node src/main.ts",
+    "test": "node --test 'src/**/*.test.ts'",
+    "test:integration": "node --test 'src/**/*.int-test.ts'",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src/"
   },
@@ -12,5 +13,10 @@
     "@types/node": "^24.19.2",
     "oxlint": "^1.93.0",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "amqplib": "^2.3.1",
+    "ioredis": "^6.0.0",
+    "mongoose": "^9.12.1"
   }
 }

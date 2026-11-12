@@ -2,9 +2,11 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module.js';
+import { correlationMiddleware } from './shared/correlation.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.use(correlationMiddleware);
   app.use(cookieParser());
   // whitelist + forbidNonWhitelisted: campo fora do DTO vira 400 em vez de passar adiante.
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));

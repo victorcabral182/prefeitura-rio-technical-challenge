@@ -56,6 +56,14 @@ Todas as rotas exigem `Authorization: Bearer <token>`. Passageiro cria e lê só
 
 Cada escrita grava o evento (`corrida.criada`, `corrida.status_alterado`) no outbox do MySQL na mesma transação, e a api publica no RabbitMQ em até ~1s. A topologia (exchange `corridas`, fila `worker.corridas`, DLQ) está em `rabbitmq/definitions.json` e é aplicada pelo serviço `rabbitmq-init` antes de api e worker subirem.
 
+O worker consome `worker.corridas`, grava o snapshot no Redis (`corrida:<id>`, só se a `versao` for maior que a do cache) e um documento por evento na coleção `historico_corridas` do MongoDB (`_id = eventId`). Mensagem duplicada não muda nada, mensagem inválida vai para a `worker.corridas.dlq`, e com Redis ou Mongo fora a mensagem volta para a fila depois de 5s. Se perder o RabbitMQ, o worker sai e o compose o reinicia.
+
+Toda resposta da api traz `X-Correlation-Id` (o enviado pelo cliente ou um gerado). Ele segue no outbox e nos headers da mensagem até os logs JSON do worker:
+
+```bash
+docker compose logs worker --no-log-prefix | grep <correlation-id>
+```
+
 ```bash
 TOKEN=$(curl -s -H 'Content-Type: application/json' \
   -d '{"email":"passageiro@teste.local","password":"senha-de-teste"}' \
@@ -71,6 +79,8 @@ Testes, lint e typecheck rodam dentro dos containers:
 docker compose exec api npm test                  # unitários, sem banco
 docker compose exec api npm run test:integration  # contra o MySQL, no banco separado corridas_test
 docker compose exec api npm run lint
+docker compose exec worker npm test                  # unitários
+docker compose exec worker npm run test:integration  # contra Redis (db 15) e Mongo (banco corridas_test)
 docker compose exec worker sh -c 'npm run typecheck && npm run lint'
 docker compose exec ui npm run lint
 ```
@@ -95,7 +105,7 @@ O volume grava a migration em `api/prisma/migrations` no host, e o `--watch` reb
 | Pasta     | Stack                                                       |
 | --------- | ----------------------------------------------------------- |
 | `api/`    | NestJS 12 (ESM, Vitest, oxlint)                             |
-| `worker/` | Node 24 + TypeScript executado nativamente (sem build)      |
+| `worker/` | Node 24 + TypeScript executado nativamente (sem build), `node:test` |
 | `ui/`     | Vite 8 + React 19                                           |
 
 Cada pasta é um pacote npm independente, com seu próprio `package-lock.json` e `Dockerfile`.

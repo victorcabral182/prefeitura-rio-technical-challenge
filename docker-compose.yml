@@ -48,6 +48,12 @@ services:
 
   worker:
     build: ./worker
+    environment:
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:?defina no .env}:${RABBITMQ_DEFAULT_PASS:?defina no .env}@rabbitmq:5672
+      REDIS_URL: redis://redis:6379
+      MONGO_URL: mongodb://mongo:27017/corridas
+    # O worker não reconecta: se perder o RabbitMQ, sai e o compose sobe de novo.
+    restart: unless-stopped
     depends_on:
       rabbitmq-init:
         condition: service_completed_successfully
@@ -57,7 +63,7 @@ services:
         condition: service_healthy
     develop:
       watch:
-        - action: sync
+        - action: sync+restart
           path: ./worker/src
           target: /app/src
         - action: rebuild
