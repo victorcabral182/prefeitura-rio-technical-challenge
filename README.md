@@ -112,6 +112,16 @@ docker compose run --rm k6   # ~4 min, com a stack de pé
 
 O serviço `k6` fica fora do `up` normal (profile `loadtest`). Ele roda `loadtest/corridas.js`, que sobe até 50 passageiros criando e lendo corridas, e grava o resumo em `loadtest/resultado.json`. Cenário, números e achados: [`loadtest/RELATORIO.md`](loadtest/RELATORIO.md).
 
+### Kubernetes
+
+```bash
+./scripts/k8s.sh up        # cluster kind local com api (2 réplicas), worker e infra; ~2 min
+curl localhost:8080/health
+./scripts/k8s.sh down
+```
+
+Só precisa de Docker: kind e kubectl rodam num container. Também usa o `.env` e as chaves de `secrets/`, que viram Secrets do cluster sem passar pelo git. Probes, requests/limits (medidos durante o k6) e o que ficou de fora: [`k8s/README.md`](k8s/README.md).
+
 ### Migrations (Prisma)
 
 As migrations pendentes são aplicadas automaticamente quando o container da api sobe (`prisma migrate deploy`). Para criar uma nova depois de alterar `api/prisma/schema.prisma`:
