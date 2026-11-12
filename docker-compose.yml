@@ -20,6 +20,8 @@ services:
       RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:?defina no .env}:${RABBITMQ_DEFAULT_PASS:?defina no .env}@rabbitmq:5672
       REDIS_URL: redis://redis:6379
       CORS_ORIGIN: http://localhost:5173
+      OTEL_SERVICE_NAME: api
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     # Chaves do JWT montadas como arquivo, não como variável: não aparecem no
     # `docker inspect` nem no ambiente do processo. Gere com scripts/gerar-chaves-jwt.sh.
     secrets:
@@ -53,6 +55,8 @@ services:
       RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:?defina no .env}:${RABBITMQ_DEFAULT_PASS:?defina no .env}@rabbitmq:5672
       REDIS_URL: redis://redis:6379
       MONGO_URL: mongodb://mongo:27017/corridas
+      OTEL_SERVICE_NAME: worker
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
     # O worker não reconecta: se perder o RabbitMQ, sai e o compose sobe de novo.
     restart: unless-stopped
     depends_on:
@@ -81,6 +85,22 @@ services:
           target: /app/src
         - action: rebuild
           path: ./ui/package.json
+
+  # Traces (OTLP na 4318, só na rede do compose) e UI em http://localhost:16686.
+  # Armazenamento em memória: some ao reiniciar.
+  jaeger:
+    image: jaegertracing/jaeger:2.22.0
+    ports:
+      - "127.0.0.1:16686:16686"
+
+  # Raspa api, worker e o plugin de métricas do RabbitMQ (observability/prometheus.yml).
+  # UI e alertas em http://localhost:9090.
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    volumes:
+      - ./observability:/etc/prometheus:ro
+    ports:
+      - "127.0.0.1:9090:9090"
 
   mysql:
     image: mysql:8.4

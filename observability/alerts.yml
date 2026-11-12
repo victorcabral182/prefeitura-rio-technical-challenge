@@ -1,0 +1,41 @@
+# Dois alertas, um por caminho do sistema, ambos sintomas que o usuário sente:
+#
+# ApiErros5xx (caminho síncrono): o usuário recebe erro na tela. Taxa, não
+#   contagem, para um erro isolado com pouco tráfego não disparar; e só com
+#   tráfego mínimo (> 0,1 req/s), senão 1 erro em 2 requisições vira 50%.
+#   5% por 5 min: acima do ruído normal (deploy, um timeout) e abaixo do ponto
+#   em que já é incidente evidente.
+#
+# FilaWorkerAcumulando (caminho assíncrono): a api continua respondendo 201,
+#   mas cache e histórico param de atualizar (o GET mostra status velho). O 5xx
+#   não vê isso. A métrica vem do próprio RabbitMQ, então funciona com o worker
+#   morto, que é o caso principal. Com o worker saudável (prefetch 10) a fila
+#   fica perto de zero; 100 mensagens prontas por 5 min significa que ela não
+#   está drenando, e não um pico (um pico drena em segundos).
+#
+# Mantenha os groups idênticos aos de alerts-prometheusrule.yaml (o CI compara).
+groups:
+  - name: corridas
+    rules:
+      - alert: ApiErros5xx
+        expr: |
+          (
+            sum(rate(http_requests_total{job="api", status=~"5.."}[5m]))
+            / sum(rate(http_requests_total{job="api"}[5m]))
+          ) > 0.05
+          and sum(rate(http_requests_total{job="api"}[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Mais de 5% das requisições da api com erro 5xx há 5 minutos"
+          description: "Taxa atual: {{ $value | humanizePercentage }}. Ver logs da api com level=error e o trace das requisições com falha no Jaeger."
+
+      - alert: FilaWorkerAcumulando
+        expr: rabbitmq_detailed_queue_messages_ready{queue="worker.corridas"} > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Fila worker.corridas com mais de 100 mensagens prontas há 5 minutos"
+          description: "{{ $value }} mensagens esperando. Worker parado ou mais lento que a entrada: ver se o worker está consumindo (worker_messages_total) e os retries nos logs."

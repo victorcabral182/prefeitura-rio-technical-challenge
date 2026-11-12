@@ -31,6 +31,14 @@ jobs:
       - name: Build das imagens
         run: docker compose build
 
+      # As regras valem para o Prometheus do compose e para o cluster: os dois
+      # arquivos precisam ter os mesmos groups.
+      - name: Regras de alerta
+        run: |
+          docker run --rm --entrypoint promtool -v ./observability:/o:ro prom/prometheus:v3.15.1 check rules /o/alerts.yml
+          diff <(docker run --rm -v ./observability:/o:ro mikefarah/yq:4.54.1 '.groups' /o/alerts.yml) \
+               <(docker run --rm -v ./observability:/o:ro mikefarah/yq:4.54.1 '.spec.groups' /o/alerts-prometheusrule.yaml)
+
       - name: Lint e typecheck
         run: |
           docker compose run --rm --no-deps api sh -c 'npm run lint && npx tsc --noEmit'
