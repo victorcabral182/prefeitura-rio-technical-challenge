@@ -3,6 +3,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { type ConsumeMessage, connect } from 'amqplib';
 import { Redis } from 'ioredis';
 import mongoose from 'mongoose';
+import { register } from 'prom-client';
 import { handleMessage } from './handle-message.ts';
 import { log, requiredEnv } from './log.ts';
 import { createStores } from './stores.ts';
@@ -57,13 +58,17 @@ await channel.consume(QUEUE, (message) => {
 });
 
 const server = createServer((req, res) => {
+  if (req.url === '/metrics') {
+    void register.metrics().then((body) => res.writeHead(200, { 'content-type': register.contentType }).end(body));
+    return;
+  }
   if (req.url === '/health') {
     res.writeHead(200, { 'content-type': 'application/json' }).end('{"status":"ok"}');
     return;
   }
   res.writeHead(404).end();
 });
-server.listen(port, () => log('info', `consumindo ${QUEUE}; /health na porta ${port}`));
+server.listen(port, () => log('info', `consumindo ${QUEUE}; /health e /metrics na porta ${port}`));
 
 // Fecha a conexão sem esperar as mensagens em processamento: as sem ack voltam
 // para a fila e o reprocessamento é idempotente.
