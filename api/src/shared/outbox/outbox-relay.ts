@@ -1,6 +1,7 @@
 import { Injectable, Logger, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
 import { context } from '@opentelemetry/api';
 import { suppressTracing } from '@opentelemetry/core';
+import { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RabbitMqPublisher } from './rabbitmq-publisher.js';
 
@@ -35,6 +36,9 @@ export class OutboxRelay implements OnApplicationBootstrap, OnApplicationShutdow
 
   // Publica um lote. SKIP LOCKED: com várias réplicas da API, cada uma pega
   // linhas diferentes em vez de esperar ou publicar o mesmo evento.
+  // READ COMMITTED: no REPEATABLE READ o SELECT também trava o fim do índice
+  // publicado_em (gap lock), e o UPDATE de duas réplicas precisa inserir
+  // justamente ali: deadlock. Sem gap lock, sobra só o lock das linhas.
   async publishPending(): Promise<number> {
     return this.prisma.$transaction(async (tx) => {
       const locked = await tx.$queryRaw<{ id: string }[]>`
@@ -54,7 +58,7 @@ export class OutboxRelay implements OnApplicationBootstrap, OnApplicationShutdow
       );
       await tx.outboxEvento.updateMany({ where: { id: { in: ids } }, data: { publicadoEm: new Date() } });
       return events.length;
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   }
 
   private schedule(): void {
