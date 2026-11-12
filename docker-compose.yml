@@ -8,7 +8,9 @@
 
 services:
   api:
-    build: ./api
+    build:
+      context: ./api
+      target: dev
     environment:
       # Senha com caractere especial (@, :, /) precisa ser URL-encoded no .env.
       # allowPublicKeyRetrieval: sem TLS, o primeiro login após um boot do MySQL

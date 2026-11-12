@@ -19,7 +19,7 @@ new NodeSDK({
   traceExporter: new OTLPTraceExporter(),
   instrumentations: [
     // O scrape do Prometheus não vira trace.
-    new HttpInstrumentation({ ignoreIncomingRequestHook: (req) => req.url === '/metrics' }),
+    new HttpInstrumentation({ ignoreIncomingRequestHook: (req) => req.url === '/metrics' || req.url === '/health' }),
     // Um span por middleware (cors, cookieParser...) só polui o trace.
     new ExpressInstrumentation({ ignoreLayersType: [ExpressLayerType.MIDDLEWARE] }),
     new PrismaInstrumentation(),

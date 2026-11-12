@@ -16,7 +16,8 @@ export const loggerOptions: Params = {
       req: (req: { method: string; url: string }) => ({ method: req.method, url: req.url }),
       res: (res: { statusCode: number }) => ({ statusCode: res.statusCode }),
     },
-    // O Prometheus raspa o /metrics a cada 5s: logar isso só gera ruído.
-    autoLogging: { ignore: (req) => req.url === '/metrics' },
+    // O Prometheus raspa o /metrics a cada 5s e o Kubernetes chama o /health a
+    // cada poucos segundos: logar isso só gera ruído.
+    autoLogging: { ignore: (req) => req.url === '/metrics' || req.url === '/health' },
   },
 };
