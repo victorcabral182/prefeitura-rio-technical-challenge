@@ -17,6 +17,14 @@ Registro cronológico das horas dedicadas ao desenvolvimento do desafio técnico
 
 **Total do dia:** 3h42min
 
+## 12/11/2026 — Quinta-feira
+
+| Início | Término | Duração | Atividades realizadas                                                                                                                                                            |
+| ------ | ------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 17:45  | 17:57   | 12min   | CLAUDE.md, CI no GitHub Actions (PRs para develop/main, comandos do README dentro do compose), simulação em ambiente limpo e correção da autenticação do driver mariadb no MySQL. |
+
+**Total do dia:** 12min
+
 ---
 
 ## Resumo Geral
@@ -24,5 +32,5 @@ Registro cronológico das horas dedicadas ao desenvolvimento do desafio técnico
 | Indicador                   | Valor     |
 | --------------------------- | --------- |
 | Tempo sugerido pelo desafio | 6–8 horas |
-| Tempo total registrado      | 3h42min   |
-| Tempo restante até 8h       | 4h18min   |
+| Tempo total registrado      | 3h54min   |
+| Tempo restante até 8h       | 4h06min   |
