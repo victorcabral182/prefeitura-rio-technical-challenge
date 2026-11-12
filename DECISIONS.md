@@ -57,7 +57,7 @@ Cada entrada traz o contexto, as alternativas consideradas, a escolha e o trade-
 
 **Trade-off aceito.** A chave não expira e fica guardada para sempre junto da corrida. Um cliente que reutilize chaves ao longo do tempo (em vez de UUID por requisição) recebe 422. Se a idempotência for necessária em outras rotas, a evolução é a tabela genérica.
 
-## 5. Entrega de eventos: outbox transacional, topic exchange e fila quorum
+## 5. Entrega de eventos: outbox transacional, fila quorum e consumo idempotente
 
 **Contexto.** A cada criação ou mudança de status, a API publica `corrida.criada` ou `corrida.status_alterado` para o worker atualizar o cache e o histórico. Gravar no MySQL e publicar no RabbitMQ são duas operações sem transação comum: a API pode gravar e cair antes de publicar (evento perdido) ou publicar e falhar no commit (evento de algo que não existe).
 
@@ -67,14 +67,17 @@ Cada entrada traz o contexto, as alternativas consideradas, a escolha e o trade-
 - **Outbox transacional:** o evento vai para uma tabela na mesma transação da escrita, e um relay publica depois.
 - Para a **topologia:** fanout (sem filtro por tipo), topic com uma fila por evento (eventos da mesma corrida fora de ordem) ou topic com uma fila só.
 - Para **criar a topologia:** cada serviço declarar ao conectar (duplicação), importar no boot do RabbitMQ ou importar depois do boot.
+- Para a **duplicata no worker:** um "porteiro" por `eventId` (`SET NX` antes de processar, pulando o que já foi visto) ou cada escrita idempotente por si.
 
 **Escolha.**
 
 - **Outbox:** tabela `outbox_eventos`. Um relay dentro da API lê a cada segundo, com `FOR UPDATE SKIP LOCKED` (várias réplicas não pegam o mesmo lote), publica com publisher confirms e só então marca como publicado.
-- **Envelope:** `{ eventId, type, occurredAt, data }`, com `data` sendo o snapshot completo da corrida mais um campo `versao` incrementado a cada mudança. O worker deduplica pelo `eventId`, grava o cache sem consultar o MySQL e descarta evento com versão menor que a do cache.
-- **Topologia:** exchange `corridas` (topic) e uma fila `worker.corridas` ligada a `corrida.*`. Numa fila só, os eventos de uma corrida chegam em ordem, e um consumidor novo cria a própria fila sem mudar a API. As filas são quorum, o tipo recomendado pelo RabbitMQ para filas duráveis: depois do limite de reentregas, a mensagem que sempre falha vai sozinha para `worker.corridas.dlq`.
+- **Envelope:** `{ eventId, type, occurredAt, data }`, com `data` sendo o snapshot completo da corrida mais um campo `versao` incrementado a cada mudança. O worker grava o cache sem consultar o MySQL e descarta evento com versão menor que a do cache.
+- **Topologia:** exchange `corridas` (topic) e uma fila `worker.corridas` ligada a `corrida.*`. Numa fila só, os eventos de uma corrida entram em ordem, e um consumidor novo cria a própria fila sem mudar a API. A ordem de processamento não é garantida (o worker processa até 10 mensagens em paralelo): quem ordena é a `versao`. As filas são quorum, o tipo recomendado pelo RabbitMQ para filas duráveis: depois do limite de reentregas, a mensagem que sempre falha vai sozinha para `worker.corridas.dlq`.
 - **Onde fica a topologia:** num arquivo só, `rabbitmq/definitions.json`, aplicado pelo serviço `rabbitmq-init` (`POST /api/definitions`) antes de api e worker subirem. Mensagem publicada numa exchange sem fila ligada é descartada em silêncio, por isso nada publica antes de a fila existir.
 - **Por que não o import no boot:** tentei primeiro, mas com ele o broker deixa de criar o usuário do `.env` (`Will not seed default virtual host and user: have definitions to load`).
+- **Consumo no worker:** sem porteiro. Cada mensagem sempre faz as duas escritas, e cada uma é idempotente: o histórico no Mongo tem `_id = eventId` (chave duplicada = já gravado) e o cache no Redis é um compare-and-set em Lua que só grava versão maior. O porteiro falha no meio: se marcar o `eventId` e o Redis cair antes de gravar, a reentrega pula o que faltou. Testei o caso: com o Redis parado, o Mongo gravou na primeira tentativa e a reentrega completou o cache.
+- **Falhas no worker:** mensagem fora do contrato vai direto para a DLQ. Com Redis ou Mongo fora, a mensagem volta para a fila depois de 5s, para uma queda curta não esgotar o limite de 20 reentregas e mandar mensagem boa para a DLQ. Se a conexão com o RabbitMQ cair, o processo sai e o orquestrador reinicia (compose `restart`, k8s), sem lógica de reconexão: as mensagens sem ack voltam para a fila.
 
 **Trade-off aceito.**
 
@@ -82,6 +85,7 @@ Cada entrada traz o contexto, as alternativas consideradas, a escolha e o trade-
 - O evento atrasa até ~1s por causa do polling.
 - O relay segura uma transação aberta enquanto publica (no máximo 100 eventos por lote).
 - A tabela de outbox cresce sem limpeza. Apagar eventos publicados há mais de N dias fica para depois.
+- No worker, cada reentrega refaz as duas escritas (barato: um insert que falha e um script Lua). Uma queda longa de Redis ou Mongo ainda leva mensagens para a DLQ depois de ~100s, e a DLQ não é reprocessada sozinha.
 
 ## 6. Cache do `GET /corridas/:id`: só o worker escreve
 

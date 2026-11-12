@@ -28,6 +28,9 @@ docker compose exec api npx vitest run src/rides/domain/ride.spec.ts -t "nome do
 docker compose exec api npx vitest run --config vitest.config.integration.ts <arquivo>     # um de integração
 docker compose exec api npm run lint                    # oxlint --type-aware
 docker compose exec api npx tsc --noEmit
+docker compose exec worker npm test                    # node:test, *.test.ts
+docker compose exec worker npm run test:integration    # *.int-test.ts contra Redis (db 15) e Mongo (corridas_test)
+docker compose exec worker node --test --test-name-pattern "nome" src/handle-message.test.ts   # um teste
 docker compose exec worker sh -c 'npm run typecheck && npm run lint'
 docker compose exec ui npm run lint
 ```
@@ -42,12 +45,13 @@ Migrations: o container da api roda `prisma migrate deploy` + seed no start. Par
 
 - **Auth** (`identity`): login e-mail/senha (scrypt), access token JWT RS256 de 15 min, refresh token opaco (SHA-256 no banco, rotação com detecção de reuso) em cookie httpOnly `path=/auth`. `JwtAuthGuard` é exportado e usado por `rides`.
 - **Corridas** (`rides`): passageiro cria/lê só as suas; motorista lê abertas + as dele e muda status em linha reta `solicitada → aceita → em_andamento → finalizada` (fora de ordem → 409). Um motorista tem no máximo uma corrida ativa: o aceite trava a linha do motorista (`SELECT ... FOR UPDATE`, READ COMMITTED). Toda transição usa lock otimista (`updateMany where { id, versao }`). `POST /corridas` exige `Idempotency-Key`: UNIQUE `(passageiro_id, chave)` + hash do corpo (mesma chave, outro corpo → 422).
+- **Correlation** (`shared/correlation.ts`): middleware guarda o `X-Correlation-Id` (do cliente, se válido, ou gerado) num `AsyncLocalStorage`; o repositório grava na coluna `headers` do outbox e o relay repassa como headers AMQP, porque publica fora da requisição. O `traceparent` do OTel deve seguir o mesmo caminho.
 - **Outbox** (`shared/outbox`): cada escrita grava o evento em `outbox_eventos` na mesma transação. `OutboxRelay` roda dentro da api (poll a cada 1s, `FOR UPDATE SKIP LOCKED`) e publica com publisher confirms no exchange topic `corridas`. Envelope: `{ eventId, type, occurredAt, data }`, `data` = snapshot da corrida com `versao`. Tipos em `rides/infrastructure/ride-events.ts`.
 - **Cache**: `GET /corridas/:id` lê `corrida:<id>` no Redis e cai para o MySQL no miss ou erro. Só o worker escreve no cache; a api só lê.
 
 **RabbitMQ** — topologia em `rabbitmq/definitions.json` (exchange `corridas`, fila quorum `worker.corridas` ligada a `corrida.*`, DLQ `worker.corridas.dlq`), aplicada via HTTP pelo serviço one-shot `rabbitmq-init`; api e worker dependem dele com `service_completed_successfully`. Não usar o import no boot do broker: com ele o usuário do `.env` não é criado.
 
-**worker/** — Node 24 rodando TypeScript nativamente (sem build). Hoje só `/health`; vai consumir `worker.corridas`, gravar o snapshot no Redis (só se `versao` for maior) e o histórico no MongoDB, deduplicando por `eventId` (entrega at-least-once).
+**worker/** — Node 24 rodando TypeScript nativamente (type stripping: imports com `.ts`, sem enum nem parameter properties). Consome `worker.corridas` (prefetch 10) e, para cada mensagem, sempre faz as duas escritas, cada uma idempotente por si (sem "porteiro" por `eventId`, para uma reentrega completar o que faltou): histórico no Mongo via Mongoose (`historico_corridas`, `_id = eventId`, chave duplicada = já gravado) e snapshot no Redis por um Lua compare-and-set de `versao`. `handle-message.ts` decide `ack` / `dead-letter` (inválida → DLQ) / `retry` (espera 5s e requeue, para não esgotar o delivery-limit 20 da fila quorum). Sem reconexão: perdeu o RabbitMQ, `process.exit(1)` e o `restart: unless-stopped` sobe de novo — por isso o CMD é `node src/main.ts` sem `--watch` e o hot reload é `sync+restart` do compose watch. Logs: uma linha JSON por evento (`log.ts`), com `correlation_id`. O contrato do evento é uma cópia do da api (`ride-event.ts`).
 
 **ui/** — Vite 8 + React 19, telas diagramadas com dados em memória; integração com a API (e CORS com `credentials` na api) ainda pendente.
 
