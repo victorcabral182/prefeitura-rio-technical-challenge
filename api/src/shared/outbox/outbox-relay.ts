@@ -1,4 +1,6 @@
 import { Injectable, Logger, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
+import { context } from '@opentelemetry/api';
+import { suppressTracing } from '@opentelemetry/core';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RabbitMqPublisher } from './rabbitmq-publisher.js';
 
@@ -56,8 +58,10 @@ export class OutboxRelay implements OnApplicationBootstrap, OnApplicationShutdow
   }
 
   private schedule(): void {
+    // Polling sem trace: senão cada SELECT do outbox, a cada segundo, viraria um
+    // trace novo. O publish de cada evento restaura o contexto da requisição de origem.
     this.timer = setTimeout(() => {
-      this.running = this.drain().finally(() => {
+      this.running = context.with(suppressTracing(context.active()), () => this.drain()).finally(() => {
         if (!this.stopped) this.schedule();
       });
     }, INTERVAL_MS);

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { context, propagation } from '@opentelemetry/api';
 import { type Corrida, Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { correlationId } from '../../shared/correlation.js';
@@ -28,10 +29,15 @@ function toDomain(row: Corrida): Ride {
 
 // O evento vai no outbox dentro da mesma transação da escrita: ou os dois
 // gravam, ou nenhum.
+// headers: contexto da requisição (traceparent do span atual e correlation_id)
+// para o relay continuar o mesmo trace ao publicar.
 function recordEvent(tx: Tx, type: string, ride: Ride) {
+  const headers: Record<string, string> = {};
+  propagation.inject(context.active(), headers);
   const id = correlationId();
+  if (id) headers.correlation_id = id;
   return tx.outboxEvento.create({
-    data: { tipo: type, payload: toSnapshot(ride), headers: id ? { correlation_id: id } : undefined },
+    data: { tipo: type, payload: toSnapshot(ride), headers: Object.keys(headers).length ? headers : undefined },
   });
 }
 

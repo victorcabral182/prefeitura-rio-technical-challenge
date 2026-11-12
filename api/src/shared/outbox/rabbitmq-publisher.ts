@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { context, propagation, ROOT_CONTEXT } from '@opentelemetry/api';
 import { type ChannelModel, type ConfirmChannel, connect } from 'amqplib';
 import { requiredEnv } from '../env.js';
 
@@ -24,13 +25,19 @@ export class RabbitMqPublisher {
     const channel = await this.getChannel();
     try {
       for (const { headers, ...envelope } of events) {
-        channel.publish(EXCHANGE, envelope.type, Buffer.from(JSON.stringify(envelope)), {
-          persistent: true,
-          contentType: 'application/json',
-          messageId: envelope.eventId,
-          type: envelope.type,
-          headers,
-        });
+        // Publica dentro do contexto da requisição que gerou o evento: o span de
+        // publish entra no mesmo trace, e a instrumentação do amqplib troca o
+        // traceparent dos headers pelo desse span.
+        const origin = propagation.extract(ROOT_CONTEXT, headers ?? {});
+        context.with(origin, () =>
+          channel.publish(EXCHANGE, envelope.type, Buffer.from(JSON.stringify(envelope)), {
+            persistent: true,
+            contentType: 'application/json',
+            messageId: envelope.eventId,
+            type: envelope.type,
+            headers: { ...headers },
+          }),
+        );
       }
       await channel.waitForConfirms();
     } catch (error) {
