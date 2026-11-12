@@ -20,6 +20,12 @@ Sem `--watch` o ambiente sobe igual, só não sincroniza as alterações de cód
 | API               | http://localhost:3000                                                   |
 | RabbitMQ (painel) | http://localhost:15672 (`RABBITMQ_DEFAULT_USER` / `RABBITMQ_DEFAULT_PASS` do `.env`) |
 
+### UI
+
+Em http://localhost:5173, entre com um dos usuários de teste abaixo. O passageiro cria corridas e acompanha o status; o motorista vê as abertas e aceita, inicia e finaliza. A lista se atualiza a cada 5s enquanto a aba está visível.
+
+Para ver passageiro e motorista ao mesmo tempo, use duas janelas com sessões separadas (por exemplo uma normal e uma anônima): o cookie do refresh é um só por navegador, e duas abas na mesma sessão acabariam como o último usuário que entrou.
+
 ### Autenticação
 
 Usuários de teste criados automaticamente no start da api (senha de teste, só para avaliação local):

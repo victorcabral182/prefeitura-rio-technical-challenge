@@ -19,6 +19,7 @@ services:
       JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
       RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:?defina no .env}:${RABBITMQ_DEFAULT_PASS:?defina no .env}@rabbitmq:5672
       REDIS_URL: redis://redis:6379
+      CORS_ORIGIN: http://localhost:5173
     # Chaves do JWT montadas como arquivo, não como variável: não aparecem no
     # `docker inspect` nem no ambiente do processo. Gere com scripts/gerar-chaves-jwt.sh.
     secrets:
