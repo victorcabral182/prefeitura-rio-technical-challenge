@@ -1,9 +1,10 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createUser, resetDatabase } from '../../../test/integration/database.js';
 import { PrismaRideRepository } from '../../rides/infrastructure/prisma-ride.repository.js';
+import { correlationMiddleware } from '../correlation.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { OutboxRelay } from './outbox-relay.js';
-import type { EventEnvelope, RabbitMqPublisher } from './rabbitmq-publisher.js';
+import type { EventEnvelope, OutboundEvent, RabbitMqPublisher } from './rabbitmq-publisher.js';
 
 const prisma = new PrismaService();
 
@@ -42,6 +43,20 @@ describe('OutboxRelay (MySQL)', () => {
     expect(batch[0]).toMatchObject({ type: 'corrida.criada', data: { status: 'solicitada' } });
     expect(batch[0].eventId).toEqual(expect.any(String));
     expect(await prisma.outboxEvento.count({ where: { publicadoEm: null } })).toBe(0);
+  });
+
+  it('leva o correlation_id da requisição até os headers da mensagem', async () => {
+    // Cria a corrida dentro do middleware, como numa requisição com X-Correlation-Id.
+    await new Promise<void>((resolve, reject) => {
+      const req = { header: () => 'req-123' } as never;
+      const res = { setHeader: () => undefined } as never;
+      correlationMiddleware(req, res, () => void createRides(1).then(resolve, reject));
+    });
+    const publisher = fakePublisher(() => Promise.resolve());
+
+    await new OutboxRelay(prisma, publisher).publishPending();
+    const [batch] = publisher.publish.mock.calls[0] as [OutboundEvent[]];
+    expect(batch[0].headers).toEqual({ correlation_id: 'req-123' });
   });
 
   it('broker fora: os eventos continuam pendentes para o próximo ciclo', async () => {

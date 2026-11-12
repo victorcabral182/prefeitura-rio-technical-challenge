@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { type Corrida, Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
+import { correlationId } from '../../shared/correlation.js';
 import { toSnapshot } from '../application/ride-snapshot.js';
 import type { Actor } from '../domain/actor.js';
 import { DriverBusyError, RideConflictError } from '../domain/errors.js';
@@ -28,7 +29,10 @@ function toDomain(row: Corrida): Ride {
 // O evento vai no outbox dentro da mesma transação da escrita: ou os dois
 // gravam, ou nenhum.
 function recordEvent(tx: Tx, type: string, ride: Ride) {
-  return tx.outboxEvento.create({ data: { tipo: type, payload: toSnapshot(ride) } });
+  const id = correlationId();
+  return tx.outboxEvento.create({
+    data: { tipo: type, payload: toSnapshot(ride), headers: id ? { correlation_id: id } : undefined },
+  });
 }
 
 @Injectable()

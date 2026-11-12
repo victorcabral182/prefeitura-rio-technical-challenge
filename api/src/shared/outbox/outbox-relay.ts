@@ -42,7 +42,13 @@ export class OutboxRelay implements OnApplicationBootstrap, OnApplicationShutdow
       const ids = locked.map((row) => row.id);
       const events = await tx.outboxEvento.findMany({ where: { id: { in: ids } }, orderBy: { id: 'asc' } });
       await this.publisher.publish(
-        events.map((e) => ({ eventId: e.id, type: e.tipo, occurredAt: e.criadoEm.toISOString(), data: e.payload })),
+        events.map((e) => ({
+          eventId: e.id,
+          type: e.tipo,
+          occurredAt: e.criadoEm.toISOString(),
+          data: e.payload,
+          headers: (e.headers ?? undefined) as Record<string, string> | undefined,
+        })),
       );
       await tx.outboxEvento.updateMany({ where: { id: { in: ids } }, data: { publicadoEm: new Date() } });
       return events.length;
