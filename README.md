@@ -19,6 +19,8 @@ Sem `--watch` o ambiente sobe igual, só não sincroniza as alterações de cód
 | UI                | http://localhost:5173                                                   |
 | API               | http://localhost:3000                                                   |
 | RabbitMQ (painel) | http://localhost:15672 (`RABBITMQ_DEFAULT_USER` / `RABBITMQ_DEFAULT_PASS` do `.env`) |
+| Jaeger (traces)   | http://localhost:16686                                                  |
+| Prometheus        | http://localhost:9090 (alertas em `/alerts`)                            |
 
 ### UI
 
@@ -94,6 +96,21 @@ docker compose exec ui npm run lint
 O CI (`.github/workflows/ci.yml`) roda esses mesmos comandos dentro das imagens do compose em todo PR para `develop` ou `main`, a partir de um `.env` copiado do `.env.example` e de chaves JWT geradas na hora.
 
 Apagar os dados (MySQL/Mongo) e recomeçar: `docker compose down -v`.
+
+### Observabilidade
+
+- **Logs**: uma linha JSON por evento na api e no worker (`docker compose logs -f api worker`), com `correlation_id` e `trace_id`. O `correlation_id` vem do header `X-Correlation-Id` (enviado pelo cliente ou gerado pela api, e devolvido na resposta) e segue pelo outbox e pelo RabbitMQ até o worker.
+- **Métricas**: `GET /metrics` na api (`:3000`) e no worker (`:9100`, só na rede do compose), além do plugin do RabbitMQ (tamanho da fila). O Prometheus raspa os três a cada 5s (`observability/prometheus.yml`). Exemplos: `rate(http_requests_total[1m])`, `histogram_quantile(0.95, sum by (le, route) (rate(http_request_duration_seconds_bucket[1m])))`, `rabbitmq_detailed_queue_messages_ready`, `histogram_quantile(0.95, sum by (le) (rate(worker_event_lag_seconds_bucket[1m])))`.
+- **Traces**: OpenTelemetry na api e no worker, exportando para o Jaeger. Uma corrida aparece como um trace só: `POST /corridas` → transação no MySQL → publish do relay → consumo no worker → Mongo e Redis. Para achar o trace de uma requisição, pegue o `X-Correlation-Id` da resposta, procure-o nos logs (`docker compose logs api worker | grep <id>`) e abra o `trace_id` da linha em http://localhost:16686/trace/<trace_id>. O Jaeger guarda tudo em memória.
+- **Alertas**: `observability/alerts.yml` (carregado pelo Prometheus do compose) e `observability/alerts-prometheusrule.yaml` (o mesmo conteúdo como `PrometheusRule` para o cluster). O CI valida as regras com `promtool` e falha se os `groups` dos dois arquivos divergirem. A justificativa de cada alerta está nos comentários do arquivo.
+
+### Teste de carga
+
+```bash
+docker compose run --rm k6   # ~4 min, com a stack de pé
+```
+
+O serviço `k6` fica fora do `up` normal (profile `loadtest`). Ele roda `loadtest/corridas.js`, que sobe até 50 passageiros criando e lendo corridas, e grava o resumo em `loadtest/resultado.json`. Cenário, números e achados: [`loadtest/RELATORIO.md`](loadtest/RELATORIO.md).
 
 ### Migrations (Prisma)
 
