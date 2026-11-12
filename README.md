@@ -75,6 +75,8 @@ docker compose exec worker sh -c 'npm run typecheck && npm run lint'
 docker compose exec ui npm run lint
 ```
 
+O CI (`.github/workflows/ci.yml`) roda esses mesmos comandos dentro das imagens do compose em todo PR para `develop` ou `main`, a partir de um `.env` copiado do `.env.example` e de chaves JWT geradas na hora.
+
 Apagar os dados (MySQL/Mongo) e recomeçar: `docker compose down -v`.
 
 ### Migrations (Prisma)
