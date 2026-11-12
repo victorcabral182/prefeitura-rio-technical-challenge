@@ -1,49 +1,38 @@
-import { useState } from 'react'
-import type { Corrida } from './corridas.ts'
+import { useCallback, useEffect, useState } from 'react'
+import { ApiError, logout, me, refreshSession } from './api.ts'
+import type { Usuario } from './corridas.ts'
 import Login from './Login.tsx'
 import ListaCorridas from './ListaCorridas.tsx'
 import CriarCorrida from './CriarCorrida.tsx'
 
-// Dados em memória só para diagramar as telas; a integração troca por chamadas à API.
-const EXEMPLO: Corrida[] = [
-  {
-    id: '1',
-    origem: 'Praça Mauá',
-    destino: 'Aeroporto Santos Dumont',
-    status: 'em_andamento',
-    criadaEm: '2026-11-11T14:10:00Z',
-  },
-  {
-    id: '2',
-    origem: 'Largo do Machado',
-    destino: 'Maracanã',
-    status: 'finalizada',
-    criadaEm: '2026-11-10T21:30:00Z',
-  },
-]
-
 export default function App() {
-  const [email, setEmail] = useState<string | null>(null)
+  // undefined = ainda tentando restaurar a sessão; null = deslogado.
+  const [usuario, setUsuario] = useState<Usuario | null | undefined>(undefined)
   const [tela, setTela] = useState<'lista' | 'criar'>('lista')
-  const [corridas, setCorridas] = useState(EXEMPLO)
 
-  // Tela pública: sem login só existe o login. Por enquanto qualquer e-mail e senha entram.
-  if (!email) return <Login onEntrar={(email) => setEmail(email)} />
+  // Ao abrir ou recarregar a página, o token em memória não existe mais: tenta
+  // o refresh pelo cookie antes de mostrar o login.
+  useEffect(() => {
+    refreshSession()
+      .then((ok) => (ok ? me() : null))
+      .then(setUsuario, () => setUsuario(null))
+  }, [])
 
-  function criar(origem: string, destino: string) {
-    const nova: Corrida = {
-      id: crypto.randomUUID(),
-      origem,
-      destino,
-      status: 'solicitada',
-      criadaEm: new Date().toISOString(),
-    }
-    setCorridas([nova, ...corridas])
+  // Sessão expirada (o refresh também falhou): volta para o login. Devolve true
+  // se tratou o erro, para a tela não mostrar a mensagem.
+  const onErro = useCallback((erro: unknown) => {
+    if (!(erro instanceof ApiError && erro.status === 401)) return false
+    setUsuario(null)
     setTela('lista')
-  }
+    return true
+  }, [])
 
-  function sair() {
-    setEmail(null)
+  if (usuario === undefined) return null
+  if (!usuario) return <Login onEntrar={setUsuario} />
+
+  async function sair() {
+    await logout()
+    setUsuario(null)
     setTela('lista')
   }
 
@@ -51,13 +40,15 @@ export default function App() {
     <>
       <header>
         <strong>Corridas</strong>
-        <button onClick={sair}>Sair</button>
+        <span>
+          {usuario.name} ({usuario.type}) <button onClick={() => void sair()}>Sair</button>
+        </span>
       </header>
       <main>
         {tela === 'lista' ? (
-          <ListaCorridas corridas={corridas} onNova={() => setTela('criar')} />
+          <ListaCorridas usuario={usuario} onNova={() => setTela('criar')} onErro={onErro} />
         ) : (
-          <CriarCorrida onCriar={criar} onCancelar={() => setTela('lista')} />
+          <CriarCorrida onCriada={() => setTela('lista')} onCancelar={() => setTela('lista')} onErro={onErro} />
         )}
       </main>
     </>
