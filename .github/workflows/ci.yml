@@ -39,6 +39,14 @@ jobs:
           diff <(docker run --rm -v ./observability:/o:ro mikefarah/yq:4.54.1 '.groups' /o/alerts.yml) \
                <(docker run --rm -v ./observability:/o:ro mikefarah/yq:4.54.1 '.spec.groups' /o/alerts-prometheusrule.yaml)
 
+      # Renderiza os manifestos com o .env e as chaves de exemplo: pega YAML
+      # inválido e arquivo referenciado que não existe, sem subir um cluster.
+      - name: Manifestos do Kubernetes
+        run: |
+          docker build -q -t corridas-k8s-tools k8s/tools
+          docker run --rm -v "$PWD:/repo" -w /repo corridas-k8s-tools \
+            kubectl kustomize --load-restrictor LoadRestrictionsNone k8s > /dev/null
+
       - name: Lint e typecheck
         run: |
           docker compose run --rm --no-deps api sh -c 'npm run lint && npx tsc --noEmit'
