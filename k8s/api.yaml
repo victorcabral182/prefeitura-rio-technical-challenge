@@ -1,0 +1,106 @@
+# NodePort 30080: o kind publica essa porta em 127.0.0.1:8080 do host (k8s/kind.yaml).
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+spec:
+  type: NodePort
+  selector:
+    app: api
+  ports:
+    - port: 3000
+      nodePort: 30080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  # Duas réplicas: cada uma roda o relay do outbox, e o FOR UPDATE SKIP LOCKED
+  # (em READ COMMITTED) garante que cada evento sai uma vez só.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      # Migrations e seed antes da api, num container à parte: a liveness probe
+      # não conta esse tempo. Com duas réplicas os dois rodam ao mesmo tempo, e
+      # isso é seguro: o prisma migrate usa lock no banco e o seed tolera a corrida.
+      initContainers:
+        - name: migrations
+          image: corridas-api:k8s
+          imagePullPolicy: Never
+          command:
+            - sh
+            - -c
+            - until nc -z mysql 3306; do echo "aguardando o MySQL"; sleep 2; done; npx prisma migrate deploy && npm run db:seed
+          env:
+            - name: MYSQL_USER
+              valueFrom: { secretKeyRef: { name: credenciais, key: MYSQL_USER } }
+            - name: MYSQL_PASSWORD
+              valueFrom: { secretKeyRef: { name: credenciais, key: MYSQL_PASSWORD } }
+            - name: MYSQL_DATABASE
+              valueFrom: { secretKeyRef: { name: credenciais, key: MYSQL_DATABASE } }
+            # $(VAR) é expandido pelo Kubernetes a partir das variáveis acima.
+            # Senha com caractere especial (@, :, /) precisa ser URL-encoded no .env.
+            - name: DATABASE_URL
+              value: mysql://$(MYSQL_USER):$(MYSQL_PASSWORD)@mysql:3306/$(MYSQL_DATABASE)?allowPublicKeyRetrieval=true
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits: { cpu: "1", memory: 512Mi }
+      containers:
+        - name: api
+          image: corridas-api:k8s
+          # Imagem carregada no nó pelo `kind load`, não existe em registry.
+          imagePullPolicy: Never
+          envFrom:
+            - configMapRef: { name: config }
+          env:
+            - name: MYSQL_USER
+              valueFrom: { secretKeyRef: { name: credenciais, key: MYSQL_USER } }
+            - name: MYSQL_PASSWORD
+              valueFrom: { secretKeyRef: { name: credenciais, key: MYSQL_PASSWORD } }
+            - name: MYSQL_DATABASE
+              valueFrom: { secretKeyRef: { name: credenciais, key: MYSQL_DATABASE } }
+            - name: DATABASE_URL
+              value: mysql://$(MYSQL_USER):$(MYSQL_PASSWORD)@mysql:3306/$(MYSQL_DATABASE)?allowPublicKeyRetrieval=true
+            - name: RABBITMQ_USER
+              valueFrom: { secretKeyRef: { name: credenciais, key: RABBITMQ_DEFAULT_USER } }
+            - name: RABBITMQ_PASS
+              valueFrom: { secretKeyRef: { name: credenciais, key: RABBITMQ_DEFAULT_PASS } }
+            - name: RABBITMQ_URL
+              value: amqp://$(RABBITMQ_USER):$(RABBITMQ_PASS)@rabbitmq:5672
+          ports:
+            - containerPort: 3000
+          # startup: até 60s para o Nest subir; enquanto não passa, liveness e
+          # readiness nem rodam (sem reinício por boot lento).
+          startupProbe:
+            httpGet: { path: /health, port: 3000 }
+            periodSeconds: 2
+            failureThreshold: 30
+          # liveness: 3 falhas seguidas (30s) = processo travado, reinicia.
+          livenessProbe:
+            httpGet: { path: /health, port: 3000 }
+            periodSeconds: 10
+            failureThreshold: 3
+          # readiness: sai do Service em 10s se parar de responder.
+          readinessProbe:
+            httpGet: { path: /health, port: 3000 }
+            periodSeconds: 5
+            failureThreshold: 2
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          volumeMounts:
+            - name: jwt
+              mountPath: /run/secrets/jwt
+              readOnly: true
+      volumes:
+        # Chaves do JWT como arquivo, como os secrets do compose.
+        - name: jwt
+          secret:
+            secretName: jwt

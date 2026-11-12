@@ -26,8 +26,9 @@ Registro cronológico das horas dedicadas ao desenvolvimento do desafio técnico
 | 18:18  | 18:31   | 13min   | Integração da UI com a API: CORS com credentials, token em memória, refresh reativo com um refresh em voo, polling, Idempotency-Key por intenção; testes no Chrome (reload, 409, ciclo de status, expiração do token). |
 | 18:33  | 19:18   | 45min   | Parte 2: logs JSON (pino), /metrics (prom-client) e Prometheus, tracing OTel até o Jaeger atravessando o outbox, dois alertas validados no CI, teste de carga k6 e relatório. |
 | 20:13  | 20:23   | 10min   | Correção do deadlock intermitente do OutboxRelay no CI (gap lock do REPEATABLE READ no índice `publicado_em`): READ COMMITTED na transação do relay. |
+| 20:24  | 20:50   | 26min   | Parte 3: cluster kind só com Docker (container de ferramentas), manifestos Kustomize com Secrets gerados de arquivos fora do git, /health e estágio prod da api, requests/limits medidos no cluster durante o k6, correção do limite de memória do RabbitMQ, testes de persistência e recuperação. |
 
-**Total do dia:** 1h37min
+**Total do dia:** 2h03min
 
 ---
 
@@ -36,5 +37,5 @@ Registro cronológico das horas dedicadas ao desenvolvimento do desafio técnico
 | Indicador                   | Valor     |
 | --------------------------- | --------- |
 | Tempo sugerido pelo desafio | 6–8 horas |
-| Tempo total registrado      | 5h19min   |
-| Tempo restante até 8h       | 2h41min   |
+| Tempo total registrado      | 5h45min   |
+| Tempo restante até 8h       | 2h15min   |

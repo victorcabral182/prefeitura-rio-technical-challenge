@@ -17,7 +17,7 @@ const duration = new Histogram({
 // Taxa, erros (status >= 500) e latência por rota. A rota é o template do
 // Express (/corridas/:id), nunca a URL: um id por série explodiria a cardinalidade.
 export function httpMetrics(req: Request, res: Response, next: NextFunction): void {
-  if (req.path === '/metrics') return next();
+  if (req.path === '/metrics' || req.path === '/health') return next();
   const end = duration.startTimer();
   res.on('finish', () => {
     const route = (req.route as { path?: string } | undefined)?.path;
