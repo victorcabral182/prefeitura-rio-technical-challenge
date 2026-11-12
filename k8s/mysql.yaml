@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+    - port: 3306
+---
+# StatefulSet + volume persistente: os dados sobrevivem ao pod ser recriado.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+spec:
+  serviceName: mysql
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.4
+          # Só as chaves que o MySQL usa, não o Secret inteiro.
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom: { secretKeyRef: { name: credenciais, key: MYSQL_ROOT_PASSWORD } }
+            - name: MYSQL_DATABASE
+              valueFrom: { secretKeyRef: { name: credenciais, key: MYSQL_DATABASE } }
+            - name: MYSQL_USER
+              valueFrom: { secretKeyRef: { name: credenciais, key: MYSQL_USER } }
+            - name: MYSQL_PASSWORD
+              valueFrom: { secretKeyRef: { name: credenciais, key: MYSQL_PASSWORD } }
+          ports:
+            - containerPort: 3306
+          # TCP, como no compose: no primeiro boot o entrypoint sobe um MySQL
+          # temporário sem rede, e a porta só abre quando o servidor real está pronto.
+          readinessProbe:
+            tcpSocket: { port: 3306 }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          volumeMounts:
+            - name: dados
+              mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+    - metadata:
+        name: dados
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 2Gi

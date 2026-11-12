@@ -1,0 +1,48 @@
+# Aplicado pelo scripts/k8s.sh (kubectl kustomize ... | kubectl apply -f -).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: corridas
+resources:
+  - namespace.yaml
+  - mysql.yaml
+  - redis.yaml
+  - mongo.yaml
+  - rabbitmq.yaml
+  - api.yaml
+  - worker.yaml
+
+# O Kustomize põe um hash do conteúdo no nome gerado e atualiza as referências:
+# mudar uma configuração recria os pods que a usam.
+configMapGenerator:
+  - name: config
+    literals:
+      - REDIS_URL=redis://redis:6379
+      - MONGO_URL=mongodb://mongo:27017/corridas
+      # Exigida pela api; a UI não roda no cluster.
+      - CORS_ORIGIN=http://localhost:5173
+      - JWT_PRIVATE_KEY_FILE=/run/secrets/jwt/jwt_private.pem
+      - JWT_PUBLIC_KEY_FILE=/run/secrets/jwt/jwt_public.pem
+      # Sem Jaeger no cluster: o tracing fica no compose.
+      - OTEL_SDK_DISABLED=true
+  - name: rabbitmq-definitions
+    files:
+      - ../rabbitmq/definitions.json
+  # O RabbitMQ calcula o alarme de memória sobre a RAM do host, não sobre o limit
+  # do container: com 16 GB no host, o alarme ficaria em ~10 GB e o container
+  # seria morto por OOM (limit de 1Gi) antes de o broker frear os publishers.
+  # Igual ao limits.memory do k8s/rabbitmq.yaml; o alarme fica em 0,6 disso.
+  - name: rabbitmq-config
+    literals:
+      - 20-memoria.conf=total_memory_available_override_value = 1073741824
+
+# Secrets gerados na hora a partir de arquivos que não estão no git: o .env
+# (cp .env.example .env) e as chaves de scripts/gerar-chaves-jwt.sh. O repo não
+# tem nenhuma credencial; o cluster recebe as mesmas do compose.
+secretGenerator:
+  - name: credenciais
+    envs:
+      - ../.env
+  - name: jwt
+    files:
+      - jwt_private.pem=../secrets/jwt_private.pem
+      - jwt_public.pem=../secrets/jwt_public.pem

@@ -1,0 +1,12 @@
+# Um nó só (control plane + workloads): suficiente para o desafio e leve para um notebook.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+    # A api é um Service NodePort 30080; o kind publica essa porta do nó no host.
+    # 8080 e não 3000 para não brigar com o compose rodando ao mesmo tempo.
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8080
+        listenAddress: 127.0.0.1

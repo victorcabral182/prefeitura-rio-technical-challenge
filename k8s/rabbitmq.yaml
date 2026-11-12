@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+spec:
+  selector:
+    app: rabbitmq
+  ports:
+    - { name: amqp, port: 5672 }
+    - { name: management, port: 15672 }
+    - { name: prometheus, port: 15692 }
+---
+# StatefulSet: o RabbitMQ guarda os dados pelo nome do nó (rabbit@<hostname>), e
+# só o StatefulSet mantém o hostname (rabbitmq-0) quando o pod é recriado.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+spec:
+  serviceName: rabbitmq
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:4-management-alpine
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              valueFrom: { secretKeyRef: { name: credenciais, key: RABBITMQ_DEFAULT_USER } }
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom: { secretKeyRef: { name: credenciais, key: RABBITMQ_DEFAULT_PASS } }
+          ports:
+            - containerPort: 5672
+            - containerPort: 15672
+            - containerPort: 15692
+          # TCP em vez de rabbitmq-diagnostics: a CLI custa ~1s de CPU por execução.
+          readinessProbe:
+            tcpSocket: { port: 5672 }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          volumeMounts:
+            - name: dados
+              mountPath: /var/lib/rabbitmq
+            # subPath: acrescenta o arquivo sem esconder os que a imagem já traz em conf.d.
+            - name: config
+              mountPath: /etc/rabbitmq/conf.d/20-memoria.conf
+              subPath: 20-memoria.conf
+      volumes:
+        - name: config
+          configMap:
+            name: rabbitmq-config
+  volumeClaimTemplates:
+    - metadata:
+        name: dados
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 1Gi
+---
+# Aplica rabbitmq/definitions.json (exchange, filas, DLQ), como o rabbitmq-init do
+# compose. O curl repete até a API de gerenciamento subir. O import é idempotente.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rabbitmq-init
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          image: curlimages/curl:8.17.0
+          env:
+            - name: RABBITMQ_USER
+              valueFrom: { secretKeyRef: { name: credenciais, key: RABBITMQ_DEFAULT_USER } }
+            - name: RABBITMQ_PASS
+              valueFrom: { secretKeyRef: { name: credenciais, key: RABBITMQ_DEFAULT_PASS } }
+          command:
+            - sh
+            - -c
+            - >-
+              curl --fail-with-body -sS --retry 60 --retry-all-errors --retry-delay 2
+              -u "$RABBITMQ_USER:$RABBITMQ_PASS" -H "Content-Type: application/json"
+              --data-binary @/definitions/definitions.json http://rabbitmq:15672/api/definitions
+              && echo "topologia do RabbitMQ aplicada"
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+          volumeMounts:
+            - name: definitions
+              mountPath: /definitions
+      volumes:
+        - name: definitions
+          configMap:
+            name: rabbitmq-definitions
