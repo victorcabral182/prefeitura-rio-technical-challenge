@@ -102,6 +102,20 @@ services:
     ports:
       - "127.0.0.1:9090:9090"
 
+  # Teste de carga (loadtest/corridas.js). Fora do `up` normal pelo profile:
+  #   docker compose run --rm k6
+  k6:
+    image: grafana/k6:2.3.0
+    profiles: [loadtest]
+    # A imagem roda como uid 12345, que no Linux não escreve no bind mount
+    # (resultado.json). Ferramenta de teste local, sem porta publicada.
+    user: root
+    volumes:
+      - ./loadtest:/loadtest
+    command: ["run", "--summary-export", "/loadtest/resultado.json", "/loadtest/corridas.js"]
+    depends_on:
+      - api
+
   mysql:
     image: mysql:8.4
     environment:
