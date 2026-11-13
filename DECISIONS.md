@@ -99,7 +99,7 @@ Cada entrada traz o contexto, as alternativas consideradas, a escolha e o trade-
 
 **Escolha.** Só o worker escreve, com a chave `corrida:<id>` e o mesmo snapshot dos eventos. Com um escritor só, não há corrida de escrita, e a `versao` do evento cobre réplicas do worker processando fora de ordem. No miss (corrida recém-criada, worker atrasado ou Redis fora), a API responde do MySQL. O cliente Redis roda sem fila offline: com o Redis fora, o comando falha na hora e a leitura cai no MySQL em vez de esperar a reconexão. Testei parando o Redis: a resposta veio do MySQL em 4ms. A regra de perfil vale também para o que vem do cache (outro passageiro recebe 403 com a corrida no cache).
 
-**Trade-off aceito.** Logo depois de uma mudança, o cache pode ficar até ~1s (o polling do outbox) mais o tempo do worker atrás do MySQL. O `GET` aceita essa defasagem, e o `PATCH` sempre lê do MySQL antes de mudar o status. Se o worker parar, toda leitura vai ao MySQL, e a métrica de hit do cache (Parte 2) é o sinal para isso.
+**Trade-off aceito.** Logo depois de uma mudança, o cache pode ficar até ~1s (o polling do outbox) mais o tempo do worker atrás do MySQL. O `GET` aceita essa defasagem, e o `PATCH` sempre lê do MySQL antes de mudar o status. Se o worker parar, toda leitura vai ao MySQL. O sinal para isso é a métrica `cache_lookups_total{result}` da api: com tráfego normal, o miss sobe.
 
 ## 7. Interpretação dos perfis e listagem de corridas
 
@@ -125,3 +125,26 @@ Cada entrada traz o contexto, as alternativas consideradas, a escolha e o trade-
 - Não há cancelamento nem expiração de corrida não aceita. O `FOR UPDATE` usa uma linha de SQL cru, porque o Prisma não tem API de lock.
 - A regra de visibilidade existe duas vezes: na entidade, para `GET /:id`, e no `WHERE` da listagem. A alternativa seria trazer tudo e filtrar em memória.
 - Com mais de 50 corridas, as antigas somem da lista. A evolução é paginação por cursor pelo id (UUID v7 é ordenado pelo tempo).
+
+## 8. Começando do zero, manteria o RabbitMQ?
+
+**Contexto.** O enunciado pede a resposta: sem tecnologias definidas, eu manteria o RabbitMQ ou escolheria outro broker? Antes deste desafio, minha experiência com filas era com BullMQ (sobre Redis) e Hangfire (.NET). Este foi o meu primeiro contato com o RabbitMQ.
+
+O que o sistema pede do broker: entregar cada evento de corrida ao worker pelo menos uma vez, com ack por mensagem, retry e um destino para a mensagem que nunca vai dar certo. O volume medido no teste de carga é de ~40 eventos/s. A durabilidade do lado de quem publica já vem do outbox no MySQL.
+
+**Alternativas.**
+
+- **Kafka (ou Redpanda):** log com retenção e replay. Daria para reconstruir o cache do Redis ou subir um consumidor novo desde o primeiro evento, e há ordem garantida por partição (chave = id da corrida). Mas não tem ack por mensagem nem DLQ nativos (retry vira tópicos extras), a operação é mais pesada, e é exagero para ~40 eventos/s.
+- **BullMQ ou Redis Streams:** o Redis já está na stack, então seria um componente a menos, e o BullMQ é o que eu conheço, com retry e jobs falhos prontos. Mas a durabilidade passaria a depender da persistência do Redis, que aqui é só cache (sem AOF), e uma queda perderia eventos aceitos. O BullMQ também é uma fila de jobs de uma aplicação Node, não um barramento de eventos: um consumidor em outra linguagem, ou outro time ligando sua própria fila, fica difícil.
+- **Sem broker, com o outbox como fila:** o worker leria `outbox_eventos` direto do MySQL. É o mínimo de peças, mas acopla o worker ao banco da api e prende o consumo a polling.
+
+**Escolha.** Manteria o RabbitMQ. O que o projeto mostrou na prática:
+
+- ack/nack por mensagem, DLQ para a mensagem inválida e o delivery-limit da fila quorum, que impede uma mensagem envenenada de girar para sempre;
+- a exchange topic `corridas` deixa outro consumidor (notificações, por exemplo) ligar sua própria fila sem mexer na api;
+- o plugin de métricas deu o tamanho da fila ao Prometheus sem código, e é ele que alimenta o alerta de backlog;
+- o KEDA tem scaler pronto para RabbitMQ, se o worker precisar escalar pela fila.
+
+Pesou também um motivo pessoal, que declaro: era a tecnologia do desafio que eu não conhecia, e mantê-la é a forma de me aprofundar nela.
+
+**Trade-off aceito.** Não há replay: a mensagem consumida sai da fila. O histórico fica no Mongo, e reconstruir o cache exigiria republicar os eventos a partir do MySQL. Também não há ordem com prefetch 10, o que a `versao` do evento resolve (entrada 5). E é um componente a mais para operar do que um Redis que já existe. Eu trocaria pelo Kafka se replay, ou vários consumidores independentes lendo o mesmo histórico, virassem requisito.

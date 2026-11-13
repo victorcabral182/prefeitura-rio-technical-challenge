@@ -10,7 +10,7 @@ Desafio técnico (Prefeitura do Rio): serviço de corridas simplificado do Taxi.
 - **Tudo roda dentro dos containers** (`docker compose exec ...`), nunca no host: o host tem Node 22, os containers Node 24, e o client Prisma gerado (`api/src/generated/prisma`, gitignored) só existe dentro da imagem.
 - Commit e push só quando o usuário pedir. Commits pequenos, Conventional Commits, mensagem explica o porquê. Não fazer squash do histórico (exigência do enunciado). O usuário abre os PRs manualmente.
 - Ao fim de cada etapa: atualizar `DIARIO.md` (incluindo onde a IA ajudou/errou), `TIMESHEET.md` e `todo.md` (gitignored, do usuário).
-- `DECISIONS.md` tem limite de 3–8 entradas; a 8ª está reservada para a obrigatória "manteria o RabbitMQ?".
+- `DECISIONS.md` está completo (8 de 8, a 8ª é a obrigatória do RabbitMQ): decisão nova entra mesclada numa entrada existente.
 - Nada de segredo real no repo: credenciais no `.env` (gitignored, modelo em `.env.example`), chaves JWT em `secrets/` (gitignored, geradas por `scripts/gerar-chaves-jwt.sh`). Valores de teste devem ser claramente de teste (`senha-de-teste`, `@teste.local`).
 
 ## Comandos
@@ -23,7 +23,7 @@ docker compose down -v                                  # apaga dados de MySQL/M
 
 docker compose exec api npm test                        # unitários (*.spec.ts), sem banco
 docker compose exec api npm run test:integration        # *.int-spec.ts contra MySQL, banco corridas_test
-docker compose exec api npm run test:e2e                # *.e2e-spec.ts
+docker compose exec api npm run test:e2e                # *.e2e-spec.ts, contra a stack de pé e os usuários do seed
 docker compose exec api npx vitest run src/rides/domain/ride.spec.ts -t "nome do teste"   # um teste
 docker compose exec api npx vitest run --config vitest.config.integration.ts <arquivo>     # um de integração
 docker compose exec api npm run lint                    # oxlint --type-aware

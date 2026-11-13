@@ -2,6 +2,8 @@
 
 Versão simplificada do fluxo do Taxi.Rio: API NestJS, worker Node, UI React, MySQL, Redis, MongoDB e RabbitMQ.
 
+Decisões e trade-offs: [DECISIONS.md](DECISIONS.md) · diário de bordo: [DIARIO.md](DIARIO.md) · o que ficou de fora e riscos abertos: [LIMITES.md](LIMITES.md) · horas: [TIMESHEET.md](TIMESHEET.md).
+
 ## Como rodar
 
 Pré-requisito: Docker (testado com Engine 29 / Compose 5.4).
@@ -86,12 +88,20 @@ Testes, lint e typecheck rodam dentro dos containers:
 ```bash
 docker compose exec api npm test                  # unitários, sem banco
 docker compose exec api npm run test:integration  # contra o MySQL, no banco separado corridas_test
+docker compose exec api npm run test:e2e          # pela API HTTP, contra a stack de pé e os usuários do seed
 docker compose exec api npm run lint
 docker compose exec worker npm test                  # unitários
 docker compose exec worker npm run test:integration  # contra Redis (db 15) e Mongo (banco corridas_test)
 docker compose exec worker sh -c 'npm run typecheck && npm run lint'
 docker compose exec ui npm run lint
 ```
+
+O que cobrem:
+
+- **Fluxo feliz**: `api/test/rides.e2e-spec.ts`, pela API HTTP. O passageiro cria a corrida, e o motorista aceita, inicia e finaliza.
+- **Falhas**, no mesmo e2e: 401 sem token e com token adulterado, reenvio com a mesma `Idempotency-Key` devolvendo a mesma corrida, 403 do passageiro mudando status, 409 ao pular etapa.
+- **Concorrência contra o MySQL real** (integração): POSTs simultâneos com a mesma chave, dois motoristas aceitando a mesma corrida, aceites simultâneos do mesmo motorista e dois relays do outbox ao mesmo tempo.
+- **Worker**: mensagem duplicada, versão antiga chegando depois da nova, JSON inválido indo para a DLQ, Mongo ou Redis fora devolvendo a mensagem para a fila.
 
 O CI (`.github/workflows/ci.yml`) roda esses mesmos comandos dentro das imagens do compose em todo PR para `develop` ou `main`, a partir de um `.env` copiado do `.env.example` e de chaves JWT geradas na hora.
 
@@ -100,7 +110,7 @@ Apagar os dados (MySQL/Mongo) e recomeçar: `docker compose down -v`.
 ### Observabilidade
 
 - **Logs**: uma linha JSON por evento na api e no worker (`docker compose logs -f api worker`), com `correlation_id` e `trace_id`. O `correlation_id` vem do header `X-Correlation-Id` (enviado pelo cliente ou gerado pela api, e devolvido na resposta) e segue pelo outbox e pelo RabbitMQ até o worker.
-- **Métricas**: `GET /metrics` na api (`:3000`) e no worker (`:9100`, só na rede do compose), além do plugin do RabbitMQ (tamanho da fila). O Prometheus raspa os três a cada 5s (`observability/prometheus.yml`). Exemplos: `rate(http_requests_total[1m])`, `histogram_quantile(0.95, sum by (le, route) (rate(http_request_duration_seconds_bucket[1m])))`, `rabbitmq_detailed_queue_messages_ready`, `histogram_quantile(0.95, sum by (le) (rate(worker_event_lag_seconds_bucket[1m])))`.
+- **Métricas**: `GET /metrics` na api (`:3000`) e no worker (`:9100`, só na rede do compose), além do plugin do RabbitMQ (tamanho da fila). O Prometheus raspa os três a cada 5s (`observability/prometheus.yml`). Exemplos: `rate(http_requests_total[1m])`, `histogram_quantile(0.95, sum by (le, route) (rate(http_request_duration_seconds_bucket[1m])))`, `rabbitmq_detailed_queue_messages_ready`, `sum by (result) (rate(cache_lookups_total[1m]))` (hit/miss do cache), `histogram_quantile(0.95, sum by (le) (rate(worker_event_lag_seconds_bucket[1m])))`.
 - **Traces**: OpenTelemetry na api e no worker, exportando para o Jaeger. Uma corrida aparece como um trace só: `POST /corridas` → transação no MySQL → publish do relay → consumo no worker → Mongo e Redis. Para achar o trace de uma requisição, pegue o `X-Correlation-Id` da resposta, procure-o nos logs (`docker compose logs api worker | grep <id>`) e abra o `trace_id` da linha em http://localhost:16686/trace/<trace_id>. O Jaeger guarda tudo em memória.
 - **Alertas**: `observability/alerts.yml` (carregado pelo Prometheus do compose) e `observability/alerts-prometheusrule.yaml` (o mesmo conteúdo como `PrometheusRule` para o cluster). O CI valida as regras com `promtool` e falha se os `groups` dos dois arquivos divergirem. A justificativa de cada alerta está nos comentários do arquivo.
 
@@ -145,9 +155,10 @@ Cada pasta é um pacote npm independente, com seu próprio `package-lock.json` e
 
 ## Uso de IA
 
-Desenvolvido em par com o Claude Code (Anthropic). Até agora a IA ajudou no scaffold dos três pacotes, no `docker-compose.yml` e nos Dockerfiles, no diagnóstico do Mongo no kernel 7.0 e na medição de CPU dos healthchecks (detalhes no [DIARIO.md](DIARIO.md)).
+Desenvolvido em par com o **Claude Code** (Anthropic), usado no projeto inteiro: scaffold, implementação, testes, diagnóstico de falhas e rascunho da documentação. As decisões técnicas foram minhas: a IA apresentava as alternativas com os trade-offs, e eu escolhia. A exceção foi a Parte 3 (Kubernetes), em que não tenho experiência e deleguei as escolhas, pedindo que cada uma ficasse explicada em [`k8s/README.md`](k8s/README.md). O [`CLAUDE.md`](CLAUDE.md) é o contexto que a IA recebia a cada sessão, e o [DIARIO.md](DIARIO.md) registra onde ela ajudou e onde errou.
 
-Sugestões que falharam no teste e foram corrigidas:
+Sugestões que corrigimos porque a medição ou o teste contradisse:
 
-- `mongo:8` não sobe em kernel ≥ 6.19 (SERVER-121912). Trocado por `mongo:9` depois de testar as duas imagens.
-- O healthcheck do RabbitMQ a cada 10s gerava picos de 172% de CPU com o ambiente parado. Agora todos os healthchecks rodam a cada 2s só durante o boot e a cada 30s depois.
+- **Limite de memória do RabbitMQ no cluster.** A IA escreveu que o broker calcula o alarme de memória pelo limit do container. Medido no pod, o alarme saía da RAM do host (~10 GB), e o container seria morto por OOM antes de frear os publishers. Foi corrigido informando o limit explicitamente.
+- **Tokens no resultado do k6.** A primeira versão do script logava no `setup()`, e o `--summary-export` grava o retorno dele: os access tokens iriam para o `resultado.json` versionado. O login passou para cada VU.
+- **`mongo:8`** não sobe em kernel ≥ 6.19 (SERVER-121912). Trocado por `mongo:9` depois de testar as duas imagens.
