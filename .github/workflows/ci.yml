@@ -65,9 +65,9 @@ jobs:
           docker compose run --rm --no-deps worker npm run test:integration
 
       # Sobe a stack inteira pelo depends_on. O `run` troca o CMD da imagem,
-      # então as migrations do banco de dev são aplicadas aqui.
+      # então as migrations e o seed (usuários que o e2e usa) são aplicados aqui.
       - name: Testes e2e
-        run: docker compose run --rm api sh -c 'npx prisma migrate deploy && npm run test:e2e'
+        run: docker compose run --rm api sh -c 'npx prisma migrate deploy && npm run db:seed && npm run test:e2e'
 
       - name: Logs dos serviços
         if: failure()
