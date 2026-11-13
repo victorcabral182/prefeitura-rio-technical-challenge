@@ -13,7 +13,14 @@ async function bootstrap() {
   app.useLogger(app.get(Logger));
   // credentials: a UI (outra origem) precisa mandar e receber o cookie do refresh.
   // Com credentials, a origem tem que ser exata; nada de '*'.
-  app.enableCors({ origin: requiredEnv('CORS_ORIGIN'), credentials: true, exposedHeaders: ['x-correlation-id'] });
+  // maxAge: sem ele o Chrome guarda o preflight só 5s, e o polling de 5s da UI
+  // mandava um OPTIONS junto de quase todo GET.
+  app.enableCors({
+    origin: requiredEnv('CORS_ORIGIN'),
+    credentials: true,
+    exposedHeaders: ['x-correlation-id'],
+    maxAge: 600,
+  });
   app.use(httpMetrics);
   app.use(correlationMiddleware);
   app.use(cookieParser());
