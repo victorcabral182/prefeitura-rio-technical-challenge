@@ -1,0 +1,33 @@
+{
+  "name": "worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "test": "node --test 'src/**/*.test.ts'",
+    "test:integration": "node --test 'src/**/*.int-test.ts'",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint src/"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "oxlint": "^1.93.0",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.10.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.301.2",
+    "@opentelemetry/instrumentation": "^0.301.2",
+    "@opentelemetry/instrumentation-amqplib": "^0.72.0",
+    "@opentelemetry/instrumentation-http": "^0.301.2",
+    "@opentelemetry/instrumentation-ioredis": "^0.73.0",
+    "@opentelemetry/instrumentation-mongoose": "^0.71.0",
+    "@opentelemetry/instrumentation-pino": "^0.71.0",
+    "@opentelemetry/sdk-node": "^0.301.2",
+    "amqplib": "^2.3.1",
+    "ioredis": "^6.0.0",
+    "mongoose": "^9.12.1",
+    "pino": "^10.4.0",
+    "prom-client": "^15.1.3"
+  }
+}

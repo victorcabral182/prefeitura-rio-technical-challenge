@@ -1,0 +1,80 @@
+:root {
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid #8884;
+}
+
+main {
+  max-width: 48rem;
+  margin: 2rem auto;
+  padding: 0 1.5rem;
+}
+
+main.login {
+  max-width: 24rem;
+  margin-top: 15vh;
+}
+
+form,
+label {
+  display: grid;
+  gap: 1rem;
+}
+
+label {
+  gap: 0.25rem;
+}
+
+input,
+button {
+  font: inherit;
+  padding: 0.5rem 0.75rem;
+}
+
+.titulo,
+.acoes {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.acoes {
+  justify-content: flex-end;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid #8884;
+}
+
+.status {
+  padding: 0.125rem 0.5rem;
+  border-radius: 1rem;
+  font-size: 0.85rem;
+  background: #8883;
+}
+
+.erro {
+  margin: 0;
+  color: #d33;
+}

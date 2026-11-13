@@ -1,0 +1,74 @@
+# Roda os mesmos comandos do README dentro das imagens do compose: o CI usa o
+# ambiente do dev (Node 24, prisma generate da imagem) e prova que o passo a
+# passo do README funciona numa máquina limpa.
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+
+# Push novo no mesmo PR cancela a execução anterior.
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      # Valores de exemplo do repo e um par RSA descartável, gerado a cada execução.
+      - name: Ambiente
+        run: |
+          cp .env.example .env
+          ./scripts/gerar-chaves-jwt.sh
+
+      - name: Build das imagens
+        run: docker compose build
+
+      # As regras valem para o Prometheus do compose e para o cluster: os dois
+      # arquivos precisam ter os mesmos groups.
+      - name: Regras de alerta
+        run: |
+          docker run --rm --entrypoint promtool -v ./observability:/o:ro prom/prometheus:v3.15.1 check rules /o/alerts.yml
+          diff <(docker run --rm -v ./observability:/o:ro mikefarah/yq:4.54.1 '.groups' /o/alerts.yml) \
+               <(docker run --rm -v ./observability:/o:ro mikefarah/yq:4.54.1 '.spec.groups' /o/alerts-prometheusrule.yaml)
+
+      # Renderiza os manifestos com o .env e as chaves de exemplo: pega YAML
+      # inválido e arquivo referenciado que não existe, sem subir um cluster.
+      - name: Manifestos do Kubernetes
+        run: |
+          docker build -q -t corridas-k8s-tools k8s/tools
+          docker run --rm -v "$PWD:/repo" -w /repo corridas-k8s-tools \
+            kubectl kustomize --load-restrictor LoadRestrictionsNone k8s > /dev/null
+
+      - name: Lint e typecheck
+        run: |
+          docker compose run --rm --no-deps api sh -c 'npm run lint && npx tsc --noEmit'
+          docker compose run --rm --no-deps worker sh -c 'npm run typecheck && npm run lint'
+          docker compose run --rm --no-deps ui sh -c 'npm run lint && npm run build'
+
+      - name: Testes unitários
+        run: |
+          docker compose run --rm --no-deps api npm test
+          docker compose run --rm --no-deps worker npm test
+
+      - name: Testes de integração
+        run: |
+          docker compose up -d --wait mysql redis mongo
+          docker compose run --rm --no-deps api npm run test:integration
+          docker compose run --rm --no-deps worker npm run test:integration
+
+      # Sobe a stack inteira pelo depends_on. O `run` troca o CMD da imagem,
+      # então as migrations e o seed (usuários que o e2e usa) são aplicados aqui.
+      - name: Testes e2e
+        run: docker compose run --rm api sh -c 'npx prisma migrate deploy && npm run db:seed && npm run test:e2e'
+
+      - name: Logs dos serviços
+        if: failure()
+        run: docker compose logs --no-color

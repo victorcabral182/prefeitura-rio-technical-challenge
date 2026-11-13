@@ -1,0 +1,211 @@
+# Ambiente local de desenvolvimento.
+#   docker compose up --build --watch   sobe tudo com hot reload (sync de src/ para os containers)
+#   docker compose down -v              derruba e apaga os dados do MySQL e do Mongo
+# Credenciais vêm do .env (cp .env.example .env), que não é versionado.
+# Healthchecks: a cada 2s durante o boot (libera o depends_on rápido) e a cada 30s depois;
+# as CLIs do RabbitMQ/Mongo custam ~1s de CPU por execução.
+# Portas publicadas só em 127.0.0.1: o Docker ignora o firewall do host e exporia os serviços na rede.
+
+services:
+  api:
+    build:
+      context: ./api
+      target: dev
+    environment:
+      # Senha com caractere especial (@, :, /) precisa ser URL-encoded no .env.
+      # allowPublicKeyRetrieval: sem TLS, o primeiro login após um boot do MySQL
+      # (caching_sha2_password) precisa da chave RSA do servidor, e o driver mariadb
+      # recusa buscá-la por padrão. Aceitável na rede interna do compose; fora dela, TLS.
+      DATABASE_URL: mysql://${MYSQL_USER:?defina no .env}:${MYSQL_PASSWORD:?defina no .env}@mysql:3306/${MYSQL_DATABASE:?defina no .env}?allowPublicKeyRetrieval=true
+      JWT_PRIVATE_KEY_FILE: /run/secrets/jwt_private_key
+      JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:?defina no .env}:${RABBITMQ_DEFAULT_PASS:?defina no .env}@rabbitmq:5672
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGIN: http://localhost:5173
+      OTEL_SERVICE_NAME: api
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    # Chaves do JWT montadas como arquivo, não como variável: não aparecem no
+    # `docker inspect` nem no ambiente do processo. Gere com scripts/gerar-chaves-jwt.sh.
+    secrets:
+      - jwt_private_key
+      - jwt_public_key
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq-init:
+        condition: service_completed_successfully
+    develop:
+      watch:
+        - action: sync
+          path: ./api/src
+          target: /app/src
+        - action: sync
+          path: ./api/test
+          target: /app/test
+        - action: rebuild
+          path: ./api/package.json
+        - action: rebuild
+          path: ./api/prisma
+
+  worker:
+    build: ./worker
+    environment:
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:?defina no .env}:${RABBITMQ_DEFAULT_PASS:?defina no .env}@rabbitmq:5672
+      REDIS_URL: redis://redis:6379
+      MONGO_URL: mongodb://mongo:27017/corridas
+      OTEL_SERVICE_NAME: worker
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    # O worker não reconecta: se perder o RabbitMQ, sai e o compose sobe de novo.
+    restart: unless-stopped
+    depends_on:
+      rabbitmq-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./worker/src
+          target: /app/src
+        - action: rebuild
+          path: ./worker/package.json
+
+  ui:
+    build: ./ui
+    ports:
+      - "127.0.0.1:5173:5173"
+    develop:
+      watch:
+        - action: sync
+          path: ./ui/src
+          target: /app/src
+        - action: rebuild
+          path: ./ui/package.json
+
+  # Traces (OTLP na 4318, só na rede do compose) e UI em http://localhost:16686.
+  # Armazenamento em memória: some ao reiniciar.
+  jaeger:
+    image: jaegertracing/jaeger:2.22.0
+    ports:
+      - "127.0.0.1:16686:16686"
+
+  # Raspa api, worker e o plugin de métricas do RabbitMQ (observability/prometheus.yml).
+  # UI e alertas em http://localhost:9090.
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    volumes:
+      - ./observability:/etc/prometheus:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+
+  # Teste de carga (loadtest/corridas.js). Fora do `up` normal pelo profile:
+  #   docker compose run --rm k6
+  k6:
+    image: grafana/k6:2.3.0
+    profiles: [loadtest]
+    # A imagem roda como uid 12345, que no Linux não escreve no bind mount
+    # (resultado.json). Ferramenta de teste local, sem porta publicada.
+    user: root
+    volumes:
+      - ./loadtest:/loadtest
+    command: ["run", "--summary-export", "/loadtest/resultado.json", "/loadtest/corridas.js"]
+    depends_on:
+      - api
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?defina no .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?defina no .env}
+      MYSQL_USER: ${MYSQL_USER:?defina no .env}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?defina no .env}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # TCP de propósito: no primeiro boot o entrypoint sobe um MySQL temporário com
+      # --skip-networking; um ping via socket marcaria healthy antes do servidor real subir.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      start_interval: 2s
+
+  redis:
+    image: redis:8-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      start_interval: 2s
+
+  mongo:
+    # 8.x recusa subir em kernel >= 6.19 (TCMalloc viola a ABI do rseq, SERVER-121912); 9.0 sobe.
+    image: mongo:9
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      start_interval: 2s
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    # O RabbitMQ guarda os dados por nome do nó (rabbit@<hostname>); hostname fixo evita
+    # perder filas duráveis quando o container é recriado.
+    hostname: rabbitmq
+    environment:
+      # O usuário padrão guest/guest só aceita conexões de localhost, não dos outros containers.
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:?defina no .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?defina no .env}
+    ports:
+      - "127.0.0.1:15672:15672" # painel de gerenciamento
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      start_interval: 2s
+
+  # Cria a topologia (exchange, filas e DLQ) de rabbitmq/definitions.json depois
+  # que o broker sobe, e termina. Não usa o import no boot do RabbitMQ porque,
+  # com ele, o broker deixa de criar o usuário do .env. api e worker só sobem
+  # depois deste serviço: ninguém publica antes de a fila existir (mensagem para
+  # exchange sem fila ligada é descartada em silêncio). O import é idempotente.
+  rabbitmq-init:
+    image: curlimages/curl:8.17.0
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_USER: ${RABBITMQ_DEFAULT_USER:?defina no .env}
+      RABBITMQ_PASS: ${RABBITMQ_DEFAULT_PASS:?defina no .env}
+    volumes:
+      - ./rabbitmq/definitions.json:/definitions.json:ro
+    # A API de gerenciamento sobe alguns segundos depois da porta AMQP do healthcheck.
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        curl --fail-with-body -sS --retry 30 --retry-all-errors --retry-delay 1
+        -u "$$RABBITMQ_USER:$$RABBITMQ_PASS" -H "Content-Type: application/json"
+        --data-binary @/definitions.json http://rabbitmq:15672/api/definitions
+        && echo "topologia do RabbitMQ aplicada"
+
+secrets:
+  jwt_private_key:
+    file: ./secrets/jwt_private.pem
+  jwt_public_key:
+    file: ./secrets/jwt_public.pem
+
+volumes:
+  mysql-data:
+  mongo-data:

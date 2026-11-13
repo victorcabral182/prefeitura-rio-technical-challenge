@@ -1,0 +1,33 @@
+# Mesmas regras de alerts.yml, como PrometheusRule (CRD do Prometheus Operator),
+# para o cluster. A justificativa dos alertas e limiares está em alerts.yml.
+# Mantenha os groups idênticos aos de alerts.yml (o CI compara).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: corridas
+spec:
+  groups:
+    - name: corridas
+      rules:
+        - alert: ApiErros5xx
+          expr: |
+            (
+              sum(rate(http_requests_total{job="api", status=~"5.."}[5m]))
+              / sum(rate(http_requests_total{job="api"}[5m]))
+            ) > 0.05
+            and sum(rate(http_requests_total{job="api"}[5m])) > 0.1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Mais de 5% das requisições da api com erro 5xx há 5 minutos"
+            description: "Taxa atual: {{ $value | humanizePercentage }}. Ver logs da api com level=error e o trace das requisições com falha no Jaeger."
+
+        - alert: FilaWorkerAcumulando
+          expr: rabbitmq_detailed_queue_messages_ready{queue="worker.corridas"} > 100
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Fila worker.corridas com mais de 100 mensagens prontas há 5 minutos"
+            description: "{{ $value }} mensagens esperando. Worker parado ou mais lento que a entrada: ver se o worker está consumindo (worker_messages_total) e os retries nos logs."

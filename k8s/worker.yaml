@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      # O worker não reconecta: se perder o RabbitMQ (ou subir antes da fila
+      # existir), sai com erro e o Kubernetes sobe de novo, como o restart do compose.
+      containers:
+        - name: worker
+          image: corridas-worker:k8s
+          imagePullPolicy: Never
+          envFrom:
+            - configMapRef: { name: config }
+          env:
+            - name: RABBITMQ_USER
+              valueFrom: { secretKeyRef: { name: credenciais, key: RABBITMQ_DEFAULT_USER } }
+            - name: RABBITMQ_PASS
+              valueFrom: { secretKeyRef: { name: credenciais, key: RABBITMQ_DEFAULT_PASS } }
+            - name: RABBITMQ_URL
+              value: amqp://$(RABBITMQ_USER):$(RABBITMQ_PASS)@rabbitmq:5672
+          ports:
+            - containerPort: 9100
+          # Só liveness: o worker não recebe tráfego de um Service, então
+          # readiness não teria efeito.
+          livenessProbe:
+            httpGet: { path: /health, port: 9100 }
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }

@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+.env
+todo.md
+api/src/generated/
+secrets/
