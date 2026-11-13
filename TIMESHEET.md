@@ -28,8 +28,10 @@ Registro cronológico das horas dedicadas ao desenvolvimento do desafio técnico
 | 20:13  | 20:23   | 10min   | Correção do deadlock intermitente do OutboxRelay no CI (gap lock do REPEATABLE READ no índice `publicado_em`): READ COMMITTED na transação do relay. |
 | 20:24  | 20:50   | 26min   | Parte 3: cluster kind só com Docker (container de ferramentas), manifestos Kustomize com Secrets gerados de arquivos fora do git, /health e estágio prod da api, requests/limits medidos no cluster durante o k6, correção do limite de memória do RabbitMQ, testes de persistência e recuperação. |
 | 20:52  | 21:07   | 15min   | Fechamento: e2e do fluxo HTTP (401, idempotência, 403, 409, ciclo de status), métrica de hit do cache, DECISIONS 8 (RabbitMQ), LIMITES.md, declaração de IA e mapa dos testes no README. |
+| 21:22  | 21:33   | 11min   | Verificação do README em clone limpo do GitHub, feita pela IA: setup, subida com migrations e seed, exemplos de curl, URLs de observabilidade, todos os comandos de teste e lint, k6, cluster kind e `down -v`. Tudo passou de primeira. |
+| 21:33  | 21:44   | 11min   | Validação de todos os fluxos da UI no navegador, feita pela IA (Claude no Chrome) numa stack separada: login, sessão no reload, logout, isolamento entre passageiros, ciclo do motorista, 409, polling e api fora do ar. Nenhum bug funcional; corrigido o preflight do CORS sem `maxAge`, que fazia o polling mandar um OPTIONS a cada GET. |
 
-**Total do dia:** 2h18min
+**Total do dia:** 2h40min
 
 ---
 
@@ -38,5 +40,5 @@ Registro cronológico das horas dedicadas ao desenvolvimento do desafio técnico
 | Indicador                   | Valor     |
 | --------------------------- | --------- |
 | Tempo sugerido pelo desafio | 6–8 horas |
-| Tempo total registrado      | 6h00min   |
-| Tempo restante até 8h       | 2h00min   |
+| Tempo total registrado      | 6h22min   |
+| Tempo restante até 8h       | 1h38min   |
